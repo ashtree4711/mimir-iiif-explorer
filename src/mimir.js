@@ -159,7 +159,7 @@ export class MimirExplorer {
                 <!-- INTERNAL SIDEBAR -->
                 <aside id="mimir-sidebar" class="mimir-sidebar mimir-hidden">
                     <div class="mimir-sidebar-header">
-                        <h2 class="mimir-eyebrow">Structure4711</h2>
+                        <h2 class="mimir-eyebrow">Structure</h2>
                         <button id="mimir-sidebar-close" class="mimir-icon-btn" title="Close Sidebar">
                             ${ICONS.close}
                         </button>
@@ -2523,9 +2523,6 @@ export class MimirExplorer {
                 const id = btn.getAttribute('data-mimir-anno-id');
                 if (this.annotationMode === 'all') {
                     this.showAnnotationPreview(id, true);
-                } else {
-                    this.selectedAnnotationId = id;
-                    this.setAnnotationMode('single');
                 }
             };
             btn.onmouseleave = () => {
