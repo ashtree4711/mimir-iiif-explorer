@@ -142,6 +142,11 @@ export class MimirExplorer {
         this.currentAvIndex = 0;
         this.currentModelIndex = 0;
         this.collectionCache = new Map();
+        this.annotationsByCanvasId = {};
+        this.annotationMode = 'single'; // single | all
+        this.selectedAnnotationId = null;
+        this.currentAnnotations = [];
+        this.annotationStylesheets = new Set();
 
         // Apply theme color as CSS variable
         this.container.style.setProperty('--mimir-primary', this.options.primaryColor);
@@ -154,7 +159,7 @@ export class MimirExplorer {
                 <!-- INTERNAL SIDEBAR -->
                 <aside id="mimir-sidebar" class="mimir-sidebar mimir-hidden">
                     <div class="mimir-sidebar-header">
-                        <h2 class="mimir-eyebrow">Structure</h2>
+                        <h2 class="mimir-eyebrow">Structure4711</h2>
                         <button id="mimir-sidebar-close" class="mimir-icon-btn" title="Close Sidebar">
                             ${ICONS.close}
                         </button>
@@ -206,6 +211,7 @@ export class MimirExplorer {
                     </div>
 
                     <div id="mimir-osd" class="absolute inset-0"></div>
+                    <div id="mimir-annotations-layer" class="mimir-annotations-layer"></div>
                     <div id="mimir-av" class="absolute inset-0 flex items-center justify-center mimir-hidden text-white"></div>
                     <div id="mimir-3d" class="absolute inset-0 flex items-center justify-center mimir-hidden"></div>
                     
@@ -385,7 +391,13 @@ export class MimirExplorer {
                     <div class="mimir-sidebar-body">
                         <div id="mimir-metadata" class="mimir-tab-panel" data-panel="metadata"></div>
                         <div id="mimir-fulltext" class="mimir-tab-panel mimir-hidden" data-panel="fulltext"></div>
-                        <div id="mimir-annotations" class="mimir-tab-panel mimir-hidden" data-panel="annotations"></div>
+                        <div id="mimir-annotations" class="mimir-tab-panel mimir-hidden" data-panel="annotations">
+                            <div class="mimir-annotations-toolbar">
+                                <span id="mimir-annotations-count" class="mimir-annotations-count"></span>
+                                <button id="mimir-annotations-toggle" class="mimir-chip">Show all</button>
+                            </div>
+                            <div id="mimir-annotations-list" class="mimir-annotations-list"></div>
+                        </div>
                     </div>
                 </aside>
             </div>
@@ -398,6 +410,7 @@ export class MimirExplorer {
             info: this.container.querySelector('#mimir-info'),
             infoClose: this.container.querySelector('#mimir-info-close'),
             osd: this.container.querySelector('#mimir-osd'),
+            annotationsLayer: this.container.querySelector('#mimir-annotations-layer'),
             av: this.container.querySelector('#mimir-av'),
             threeD: this.container.querySelector('#mimir-3d'),
             message: this.container.querySelector('#mimir-message'),
@@ -417,6 +430,9 @@ export class MimirExplorer {
             metadataContainer: this.container.querySelector('#mimir-metadata'),
             fulltextContainer: this.container.querySelector('#mimir-fulltext'),
             annotationsContainer: this.container.querySelector('#mimir-annotations'),
+            annotationsToggle: this.container.querySelector('#mimir-annotations-toggle'),
+            annotationsCount: this.container.querySelector('#mimir-annotations-count'),
+            annotationsList: this.container.querySelector('#mimir-annotations-list'),
             structureItems: this.container.querySelector('#mimir-structure-items'),
             structureOutline: this.container.querySelector('#mimir-structure-outline'),
             structureCollection: this.container.querySelector('#mimir-structure-collection'),
@@ -761,13 +777,13 @@ export class MimirExplorer {
             }
             .mimir-list-row {
                 display: grid;
-                grid-template-columns: 2.25rem 1fr;
-                align-items: center;
+                grid-template-columns: 2.8rem 1fr;
+                align-items: start;
                 gap: 0.75rem;
             }
             .mimir-thumb {
-                width: 2.25rem;
-                height: 2.25rem;
+                width: 2.8rem;
+                height: 3.8rem;
                 border-radius: 0.5rem;
                 object-fit: cover;
                 background: rgba(17,17,17,0.06);
@@ -778,11 +794,109 @@ export class MimirExplorer {
             .mimir-thumb-placeholder {
                 display: inline-block;
             }
+            .mimir-chip {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.4rem;
+                padding: 0.3rem 0.6rem;
+                border-radius: 999px;
+                border: 1px solid rgba(17,17,17,0.12);
+                background: rgba(17,17,17,0.05);
+                font-size: 0.72rem;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: #111111;
+            }
+            .mimir-chip.is-active {
+                border-color: rgba(var(--mimir-primary-rgb), 0.45);
+                background: rgba(var(--mimir-primary-rgb), 0.12);
+                color: var(--mimir-primary);
+            }
+            .mimir-annotations-toolbar {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            .mimir-annotations-count {
+                font-size: 0.7rem;
+                color: #6b7280;
+                font-weight: 600;
+            }
+            .mimir-annotations-list {
+                display: grid;
+                gap: 0.6rem;
+                margin-top: 0.5rem;
+            }
+            .mimir-anno-item {
+                width: 100%;
+                text-align: left;
+                padding: 0.6rem 0.75rem;
+                border-radius: 0.7rem;
+                border: 1px solid rgba(17,17,17,0.08);
+                background: rgba(17,17,17,0.03);
+                color: #111111;
+                display: grid;
+                gap: 0.25rem;
+            }
+            .mimir-anno-item.is-active {
+                border-color: rgba(var(--mimir-primary-rgb), 0.45);
+                background: rgba(var(--mimir-primary-rgb), 0.12);
+                color: var(--mimir-primary);
+            }
+            .mimir-anno-item.is-hover {
+                border-color: rgba(var(--mimir-primary-rgb), 0.35);
+                background: rgba(var(--mimir-primary-rgb), 0.08);
+            }
+            .mimir-anno-title {
+                font-weight: 700;
+                font-size: 0.78rem;
+            }
+            .mimir-anno-excerpt {
+                font-size: 0.75rem;
+                color: #6b7280;
+            }
+            .mimir-annotations-layer {
+                position: absolute;
+                inset: 0;
+                z-index: 20;
+                pointer-events: none;
+            }
+            .mimir-anno-box {
+                position: absolute;
+                border: 2px solid rgba(var(--mimir-primary-rgb), 0.85);
+                background: transparent;
+                border-radius: 0.4rem;
+                box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+                pointer-events: auto;
+            }
+            .mimir-anno-box.is-active {
+                background: rgba(var(--mimir-primary-rgb), 0.2);
+                border-color: rgba(var(--mimir-primary-rgb), 1);
+            }
+            .mimir-anno-note {
+                position: absolute;
+                max-width: 260px;
+                padding: 0.6rem 0.75rem;
+                border-radius: 0.6rem;
+                background: rgba(255,255,255,0.95);
+                color: #111111;
+                border: 1px solid rgba(17,17,17,0.12);
+                box-shadow: 0 10px 30px rgba(17,17,17,0.2);
+                font-size: 0.78rem;
+                line-height: 1.4;
+                pointer-events: none;
+            }
+            #mimir-root.mimir-dark .mimir-anno-note {
+                background: rgba(17,17,17,0.95);
+                color: #f8fafc;
+                border-color: rgba(255,255,255,0.12);
+            }
             .mimir-list-label {
                 overflow: hidden;
                 text-overflow: ellipsis;
                 display: -webkit-box;
-                -webkit-line-clamp: 2;
+                -webkit-line-clamp: 3;
                 -webkit-box-orient: vertical;
                 white-space: normal;
             }
@@ -1534,6 +1648,12 @@ export class MimirExplorer {
             this.els.btns.fullscreen.innerHTML = isFull ? ICONS.minimize : ICONS.maximize;
             this.els.btns.topFullscreen.innerHTML = isFull ? ICONS.minimize : ICONS.maximize;
         });
+
+        if (this.els.annotationsToggle) {
+            this.els.annotationsToggle.onclick = () => {
+                this.setAnnotationMode(this.annotationMode === 'all' ? 'single' : 'all');
+            };
+        }
     }
 
     bindLayoutRules() {
@@ -1802,10 +1922,171 @@ export class MimirExplorer {
             this.currentModelIndex = 0;
             this.currentParsed = this.parseManifest(manifest);
             this.render(this.currentParsed.type, manifest, this.currentParsed);
+            this.fetchAnnotationPages(this.currentParsed.annotationPageRefs || []);
         } catch (error) {
             console.error('Mimir: Error loading manifest', error);
             this.showMessage(`Error: ${error.message}`);
         } finally { this.showLoader(false); }
+    }
+
+    async fetchAnnotationPages(refs) {
+        if (!refs?.length) return;
+        const unique = Array.from(new Map(refs.filter(r => r?.id).map(r => [r.id, r])).values());
+        await Promise.all(unique.map(async (ref) => {
+            try {
+                const response = await fetch(ref.id);
+                if (!response.ok) return;
+                const page = await response.json();
+                const items = (page.items || page.annotations || page.resources || []);
+                const pageStylesheets = [];
+                const pageSheet = page?.stylesheet || page?.styleSheet;
+                if (pageSheet) {
+                    if (typeof pageSheet === 'string') pageStylesheets.push(pageSheet);
+                    else if (Array.isArray(pageSheet)) {
+                        pageSheet.forEach(s => pageStylesheets.push(s.id || s['@id'] || s));
+                    } else pageStylesheets.push(pageSheet.id || pageSheet['@id']);
+                }
+                const list = this.parseAnnotationPageItems(items, ref.canvasId, pageStylesheets);
+                list.forEach((anno) => {
+                    const key = anno.canvasId || ref.canvasId;
+                    if (!key) return;
+                    if (!this.currentParsed.annotationsByCanvasId[key]) this.currentParsed.annotationsByCanvasId[key] = [];
+                    this.currentParsed.annotationsByCanvasId[key].push(anno);
+                });
+            } catch (err) {
+                console.warn('Mimir: Failed to load annotation page', ref.id, err);
+            }
+        }));
+        this.updateAnnotationsPanel(this.osdExplorer?.currentPage?.() || 0);
+    }
+
+    parseAnnotationPageItems(items, canvasId, pageStylesheets = []) {
+        const asArray = (val) => (Array.isArray(val) ? val : (val ? [val] : []));
+        const getId = (obj) => (obj && (obj.id || obj['@id'])) || null;
+        const getType = (obj) => (obj && (obj.type || obj['@type'])) || '';
+        const getLabel = (label) => {
+            if (!label) return '';
+            if (typeof label === 'string') return label;
+            if (Array.isArray(label)) return getLabel(label[0]);
+            if (typeof label === 'object') {
+                const values = Object.values(label);
+                return values.length > 0 ? getLabel(values[0]) : '';
+            }
+            return '';
+        };
+        const escapeHtml = (text) => String(text)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/\"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+        const extractXYWH = (val) => {
+            if (!val || typeof val !== 'string') return null;
+            const match = val.match(/xywh=([^&]+)/);
+            if (!match) return null;
+            const raw = match[1].replace(/^pixel:/, '').replace(/^pct:/, '').trim();
+            const nums = raw.split(',').map(Number);
+            if (nums.length !== 4 || nums.some(n => !Number.isFinite(n))) return null;
+            return nums;
+        };
+        const extractSvgXYWH = (svgText) => {
+            if (!svgText || typeof DOMParser === 'undefined') return null;
+            try {
+                const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+                const svg = doc.documentElement;
+                if (!svg) return null;
+                const shape = svg.querySelector('rect, circle, ellipse, polygon, polyline, path');
+                if (!shape) return null;
+                const temp = document.createElement('div');
+                temp.style.position = 'absolute';
+                temp.style.left = '-9999px';
+                temp.style.top = '-9999px';
+                const liveSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                const imported = document.importNode ? document.importNode(shape, true) : shape.cloneNode(true);
+                liveSvg.appendChild(imported);
+                temp.appendChild(liveSvg);
+                document.body.appendChild(temp);
+                const bbox = imported.getBBox();
+                document.body.removeChild(temp);
+                return [bbox.x, bbox.y, bbox.width, bbox.height];
+            } catch {
+                return null;
+            }
+        };
+        const parseTarget = (target, fallbackCanvasId) => {
+            if (!target) return { canvasId: fallbackCanvasId, xywh: null };
+            if (typeof target === 'string') {
+                const [base, fragment] = target.split('#');
+                const xywh = extractXYWH(fragment || target);
+                return { canvasId: base || fallbackCanvasId, xywh };
+            }
+            if (Array.isArray(target)) return parseTarget(target[0], fallbackCanvasId);
+            const source = target.source || target.id || target['@id'];
+            const selectors = asArray(target.selector || target.selectors);
+            let xywh = null;
+            selectors.forEach(sel => {
+                if (xywh) return;
+                const value = sel?.value || sel?.['@value'] || '';
+                xywh = extractXYWH(value);
+                if (!xywh && String(sel?.type || sel?.['@type']).includes('Svg')) {
+                    xywh = extractSvgXYWH(value);
+                }
+            });
+            return { canvasId: source || fallbackCanvasId, xywh };
+        };
+        const extractTextBodies = (body) => {
+            const bodies = asArray(body);
+            const results = [];
+            bodies.forEach(b => {
+                if (!b) return;
+                const type = getType(b);
+                const format = b.format || '';
+                if (type === 'SpecificResource' && b.source) {
+                    results.push(...extractTextBodies(b.source));
+                    return;
+                }
+                const value = b.value || b.chars || b.text || b['@value'] || (typeof b === 'string' ? b : '');
+                if (!value) return;
+                const isText = type === 'TextualBody' || format.startsWith('text/');
+                if (!isText && typeof b !== 'string') return;
+                const isHtml = format.includes('html');
+                const html = isHtml ? value : `<p>${escapeHtml(value).replace(/\\n/g, '<br>')}</p>`;
+                const label = getLabel(b.label);
+                results.push({ html, label });
+            });
+            return results;
+        };
+        const annotations = [];
+        asArray(items).forEach((anno) => {
+            if (!anno) return;
+            const motivation = anno.motivation || '';
+            const textBodies = extractTextBodies(anno.body || anno.resource);
+            if (!textBodies.length) return;
+            if (String(motivation).includes('painting')) return;
+            const targetInfo = parseTarget(anno.target || anno.on, canvasId);
+            const html = textBodies.map(b => b.html).join('');
+            const label = getLabel(anno.label) || textBodies[0]?.label || '';
+            const id = getId(anno) || `${canvasId || 'canvas'}-anno-${annotations.length + 1}`;
+            const stylesheets = [...pageStylesheets];
+            const stylesheet = anno.stylesheet || anno.styleSheet;
+            if (stylesheet) {
+                if (typeof stylesheet === 'string') stylesheets.push(stylesheet);
+                else if (Array.isArray(stylesheet)) {
+                    stylesheet.forEach(s => stylesheets.push(s.id || s['@id'] || s));
+                } else stylesheets.push(stylesheet.id || stylesheet['@id']);
+            }
+            const styleClass = anno.styleClass || anno.class || anno.body?.styleClass || anno.target?.styleClass || '';
+            annotations.push({
+                id,
+                label,
+                html,
+                canvasId: targetInfo.canvasId || canvasId,
+                xywh: targetInfo.xywh,
+                styleClass,
+                stylesheets: stylesheets.filter(Boolean)
+            });
+        });
+        return annotations;
     }
 
     detectType(manifest, parsed) {
@@ -1862,6 +2143,7 @@ export class MimirExplorer {
 
     renderImage(manifest, parsed) {
         this.els.osd.classList.remove('mimir-hidden'); this.showToolbar(true);
+        if (this.els.annotationsLayer) this.els.annotationsLayer.classList.remove('mimir-hidden');
         this.tileSources = parsed?.imageSources?.length ? parsed.imageSources : [];
         if (this.osdExplorer) this.osdExplorer.destroy();
         if (this.tileSources.length === 0) { this.showMessage("No image services found."); this.showToolbar(true); return; }
@@ -1889,6 +2171,9 @@ export class MimirExplorer {
             visibilityRatio: 1, minZoomLevel: 0, defaultZoomLevel: 0, homeFillsExplorer: true,
             drawer: supportsWebGL ? ['webgl', 'canvas'] : ['canvas']
         });
+        this.osdExplorer.addHandler('open', () => this.updateAnnotationOverlays());
+        this.osdExplorer.addHandler('animation', () => this.updateAnnotationOverlays());
+        this.osdExplorer.addHandler('resize', () => this.updateAnnotationOverlays());
         if (this.els.renderMode) this.els.renderMode.textContent = supportsWebGL ? 'WEBGL' : 'CANVAS';
         if (this.els.zoomSlider) this.els.zoomSlider.value = 1;
         this.zoomValue = 1;
@@ -1933,6 +2218,7 @@ export class MimirExplorer {
         if (this.els.pageTotal) this.els.pageTotal.innerText = `/ ${totalImages}`;
         this.highlightActiveCanvas(osdPageIndex, true);
         this.highlightActiveOutline(osdPageIndex);
+        this.updateAnnotationsPanel(osdPageIndex);
     }
 
     highlightActiveCanvas(osdPageIndex, scroll) {
@@ -2142,9 +2428,229 @@ export class MimirExplorer {
                 ? `<div class="mimir-card"><p class="mimir-meta-title">Fulltext</p><p class="mimir-meta-value">${text}</p></div>`
                 : `<div class="mimir-card"><p class="mimir-meta-title">Fulltext</p><p class="mimir-meta-value">No fulltext available.</p></div>`;
         }
-        if (this.els.annotationsContainer) {
-            this.els.annotationsContainer.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">Annotations</p><p class="mimir-meta-value">Annotations will appear here.</p></div>`;
+        this.updateAnnotationsPanel(0);
+    }
+
+    escapeHtml(text) {
+        return String(text)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/\"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    stripHtml(html) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        return (tmp.textContent || tmp.innerText || '').trim();
+    }
+
+    setAnnotationMode(mode) {
+        this.annotationMode = mode;
+        if (this.els.annotationsToggle) {
+            const isAll = mode === 'all';
+            this.els.annotationsToggle.textContent = isAll ? 'Show selected' : 'Show all';
+            this.els.annotationsToggle.classList.toggle('is-active', isAll);
         }
+        this.updateAnnotationsPanel();
+        this.updateAnnotationOverlays();
+    }
+
+    updateAnnotationsPanel(pageIndex = null) {
+        if (!this.els.annotationsList) return;
+        const canvasId = pageIndex === null
+            ? this.currentAnnotations?.[0]?.canvasId
+            : this.currentParsed?.canvases?.[pageIndex]?.id;
+        const allMap = this.currentParsed?.annotationsByCanvasId || {};
+        let list = canvasId ? (allMap[canvasId] || []) : [];
+        if (!list.length) {
+            const allKeys = Object.keys(allMap);
+            if (allKeys.length === 1) list = allMap[allKeys[0]] || [];
+        }
+        this.currentAnnotations = list;
+        this.loadAnnotationStylesheets(list);
+
+        const totalCount = Object.values(allMap).reduce((sum, arr) => sum + (arr?.length || 0), 0);
+        if (!list.length) {
+            const keys = Object.keys(this.currentParsed?.annotationsByCanvasId || {});
+            const keyInfo = keys.length ? `<p class="mimir-meta-value">Parsed keys: ${this.escapeHtml(keys.join(', '))}</p>` : '';
+            this.els.annotationsList.innerHTML = `
+                <div class="mimir-card">
+                    <p class="mimir-meta-title">Annotations</p>
+                    <p class="mimir-meta-value">No annotations available.</p>
+                    <p class="mimir-meta-value">Parsed total: ${totalCount}</p>
+                    ${keyInfo}
+                </div>
+            `;
+            if (this.els.annotationsToggle) this.els.annotationsToggle.classList.add('mimir-hidden');
+            if (this.els.annotationsCount) this.els.annotationsCount.textContent = '';
+            this.selectedAnnotationId = null;
+            this.updateAnnotationOverlays();
+            return;
+        }
+
+        if (this.els.annotationsToggle) this.els.annotationsToggle.classList.remove('mimir-hidden');
+        if (this.els.annotationsCount) this.els.annotationsCount.textContent = `${list.length} annotation${list.length === 1 ? '' : 's'} (total ${totalCount})`;
+        if (this.annotationMode === 'single' && this.selectedAnnotationId) {
+            const exists = list.some(a => a.id === this.selectedAnnotationId);
+            if (!exists) this.selectedAnnotationId = null;
+        }
+
+        const itemsHtml = list.map((anno, idx) => {
+            const title = anno.label || `Annotation ${idx + 1}`;
+            const excerpt = this.stripHtml(anno.html || '');
+            const short = excerpt.length > 140 ? `${excerpt.slice(0, 140)}…` : excerpt;
+            const isActive = this.annotationMode === 'single' && anno.id === this.selectedAnnotationId;
+            return `
+                <button class="mimir-anno-item ${isActive ? 'is-active' : ''}" data-mimir-anno-id="${anno.id}">
+                    <div class="mimir-anno-title">${this.escapeHtml(title)}</div>
+                    <div class="mimir-anno-excerpt">${this.escapeHtml(short || 'No text')}</div>
+                </button>
+            `;
+        }).join('');
+
+        this.els.annotationsList.innerHTML = itemsHtml;
+        this.els.annotationsList.querySelectorAll('[data-mimir-anno-id]').forEach(btn => {
+            btn.onclick = () => {
+                const id = btn.getAttribute('data-mimir-anno-id');
+                if (this.annotationMode !== 'single') this.annotationMode = 'single';
+                if (this.selectedAnnotationId === id) this.selectedAnnotationId = null;
+                else this.selectedAnnotationId = id;
+                this.setAnnotationMode('single');
+            };
+            btn.onmouseenter = () => {
+                const id = btn.getAttribute('data-mimir-anno-id');
+                if (this.annotationMode === 'all') {
+                    this.showAnnotationPreview(id, true);
+                } else {
+                    this.selectedAnnotationId = id;
+                    this.setAnnotationMode('single');
+                }
+            };
+            btn.onmouseleave = () => {
+                const id = btn.getAttribute('data-mimir-anno-id');
+                if (this.annotationMode === 'all') {
+                    this.showAnnotationPreview(id, false);
+                }
+            };
+        });
+
+        this.updateAnnotationOverlays();
+    }
+
+    loadAnnotationStylesheets(list) {
+        if (!list?.length) return;
+        list.forEach((anno) => {
+            (anno.stylesheets || []).forEach((href) => {
+                if (!href || this.annotationStylesheets.has(href)) return;
+                const link = document.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = href;
+                document.head.appendChild(link);
+                this.annotationStylesheets.add(href);
+            });
+        });
+    }
+
+    updateAnnotationOverlays() {
+        if (!this.els.annotationsLayer) return;
+        this.els.annotationsLayer.innerHTML = '';
+        if (!this.osdExplorer || !this.currentAnnotations?.length) return;
+
+        const annotations = this.annotationMode === 'all'
+            ? this.currentAnnotations
+            : this.currentAnnotations.filter(a => a.id === this.selectedAnnotationId);
+
+        annotations.forEach((anno) => {
+            if (!anno.xywh) return;
+            const rect = this.getAnnotationRectPx(anno.xywh);
+            if (!rect) return;
+
+            const box = document.createElement('div');
+            const isSelected = this.annotationMode === 'single' && anno.id === this.selectedAnnotationId;
+            box.className = `mimir-anno-box${isSelected ? ' is-active' : ''}${anno.styleClass ? ` ${anno.styleClass}` : ''}`;
+            box.style.left = `${rect.x}px`;
+            box.style.top = `${rect.y}px`;
+            box.style.width = `${rect.width}px`;
+            box.style.height = `${rect.height}px`;
+            box.dataset.mimirAnnoId = anno.id;
+            box.style.background = this.annotationMode === 'all' && !isSelected ? 'transparent' : '';
+
+            const note = document.createElement('div');
+            note.className = `mimir-anno-note${anno.styleClass ? ` ${anno.styleClass}` : ''}`;
+            note.innerHTML = anno.html || '';
+            note.dataset.mimirAnnoId = anno.id;
+            if (this.annotationMode === 'all') {
+                note.style.display = 'none';
+            }
+
+            this.els.annotationsLayer.appendChild(box);
+            this.els.annotationsLayer.appendChild(note);
+            this.positionAnnotationNote(note, rect);
+
+            if (this.annotationMode === 'all') {
+                box.addEventListener('mouseenter', () => {
+                    this.showAnnotationPreview(anno.id, true, rect);
+                });
+                box.addEventListener('mouseleave', () => {
+                    this.showAnnotationPreview(anno.id, false);
+                });
+            }
+        });
+    }
+
+    showAnnotationPreview(id, show, rect = null) {
+        const box = this.els.annotationsLayer?.querySelector(`.mimir-anno-box[data-mimir-anno-id="${id}"]`);
+        const note = this.els.annotationsLayer?.querySelector(`.mimir-anno-note[data-mimir-anno-id="${id}"]`);
+        if (box) box.classList.toggle('is-active', show);
+        if (note) {
+            note.style.display = show ? 'block' : 'none';
+            if (show) {
+                const currentRect = rect || this.getAnnotationRectPx(this.currentAnnotations.find(a => a.id === id)?.xywh);
+                if (currentRect) this.positionAnnotationNote(note, currentRect);
+            }
+        }
+        this.setAnnotationHover(id, show);
+    }
+
+    setAnnotationHover(id, isHover) {
+        const item = this.els.annotationsList?.querySelector(`[data-mimir-anno-id="${id}"]`);
+        if (item) item.classList.toggle('is-hover', isHover);
+    }
+
+    getAnnotationRectPx(xywh) {
+        if (!this.osdExplorer || !xywh) return null;
+        const [x, y, w, h] = xywh;
+        const rect = new OpenSeadragon.Rect(x, y, w, h);
+        const vRect = this.osdExplorer.viewport.imageToViewportRectangle(rect);
+        const tl = this.osdExplorer.viewport.pixelFromPoint(vRect.getTopLeft(), true);
+        const br = this.osdExplorer.viewport.pixelFromPoint(vRect.getBottomRight(), true);
+        return {
+            x: tl.x,
+            y: tl.y,
+            width: Math.max(1, br.x - tl.x),
+            height: Math.max(1, br.y - tl.y)
+        };
+    }
+
+    positionAnnotationNote(note, rect) {
+        if (!note || !this.els.osd) return;
+        const margin = 10;
+        const stage = this.els.osd.getBoundingClientRect();
+        const noteWidth = note.offsetWidth || 240;
+        const noteHeight = note.offsetHeight || 120;
+        let left = rect.x + rect.width + margin;
+        let top = rect.y;
+        if (left + noteWidth > stage.width) {
+            left = rect.x - noteWidth - margin;
+        }
+        if (left < margin) left = margin;
+        if (top + noteHeight > stage.height) {
+            top = Math.max(margin, stage.height - noteHeight - margin);
+        }
+        note.style.left = `${left}px`;
+        note.style.top = `${top}px`;
     }
 
     updateStructure(parsed) {
@@ -2332,6 +2838,7 @@ export class MimirExplorer {
 
     renderAV(manifest, parsed) {
         this.els.av.classList.remove('mimir-hidden'); this.showToolbar(true);
+        if (this.els.annotationsLayer) this.els.annotationsLayer.classList.add('mimir-hidden');
         this.avItems = parsed?.avItems || [];
         if (this.avItems.length === 0) { this.showMessage("No audio/video items found."); return; }
         const current = this.avItems[this.currentAvIndex] || this.avItems[0];
@@ -2402,6 +2909,7 @@ export class MimirExplorer {
 
     render3D(manifest, parsed) {
         this.els.threeD.classList.remove('mimir-hidden'); this.showToolbar(true);
+        if (this.els.annotationsLayer) this.els.annotationsLayer.classList.add('mimir-hidden');
         this.els.btns.zoom.classList.add('mimir-hidden'); this.els.btns.topBookToggle.classList.add('mimir-hidden');
         this.els.btns.filterToggle.classList.add('mimir-hidden');
         this.setFilterOpen(false);
@@ -2488,6 +2996,12 @@ export class MimirExplorer {
             return '';
         };
         const getSummary = (summary) => getLabel(summary);
+        const escapeHtml = (text) => String(text)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/\"/g, '&quot;')
+            .replace(/'/g, '&#39;');
         const extractImageServiceId = (service) => {
             const services = asArray(service);
             for (const svc of services) {
@@ -2500,6 +3014,110 @@ export class MimirExplorer {
                 }
             }
             return null;
+        };
+        const extractXYWH = (val) => {
+            if (!val || typeof val !== 'string') return null;
+            const match = val.match(/xywh=([^&]+)/);
+            if (!match) return null;
+            const raw = match[1].replace(/^pixel:/, '').replace(/^pct:/, '').trim();
+            const nums = raw.split(',').map(Number);
+            if (nums.length !== 4 || nums.some(n => !Number.isFinite(n))) return null;
+            return nums;
+        };
+        const parseTarget = (target, fallbackCanvasId) => {
+            if (!target) return { canvasId: fallbackCanvasId, xywh: null };
+            if (typeof target === 'string') {
+                const [base, fragment] = target.split('#');
+                const xywh = extractXYWH(fragment || target);
+                return { canvasId: base || fallbackCanvasId, xywh };
+            }
+            if (Array.isArray(target)) return parseTarget(target[0], fallbackCanvasId);
+            const source = target.source || target.id || target['@id'];
+            const selectors = asArray(target.selector || target.selectors);
+            let xywh = null;
+            selectors.forEach(sel => {
+                if (xywh) return;
+                const value = sel?.value || sel?.['@value'] || '';
+                xywh = extractXYWH(value);
+                if (!xywh && String(sel?.type || sel?.['@type']).includes('Svg')) {
+                    xywh = extractSvgXYWH(value);
+                }
+            });
+            return { canvasId: source || fallbackCanvasId, xywh };
+        };
+        const extractTextBodies = (body) => {
+            const bodies = asArray(body);
+            const results = [];
+            bodies.forEach(b => {
+                if (!b) return;
+                const type = getType(b);
+                const format = b.format || '';
+                if (type === 'SpecificResource' && b.source) {
+                    results.push(...extractTextBodies(b.source));
+                    return;
+                }
+                const value = b.value || b.chars || b.text || b['@value'] || (typeof b === 'string' ? b : '');
+                if (!value) return;
+                const isText = type === 'TextualBody' || format.startsWith('text/');
+                if (!isText && typeof b !== 'string') return;
+                const isHtml = format.includes('html');
+                const html = isHtml ? value : `<p>${escapeHtml(value).replace(/\\n/g, '<br>')}</p>`;
+                const label = getLabel(b.label);
+                results.push({ html, label });
+            });
+            return results;
+        };
+        const parseAnnotationPages = (pages, canvasId, annotationPageRefs) => {
+            const annotations = [];
+            asArray(pages).forEach(page => {
+                const pageStylesheets = [];
+                const pageSheet = page?.stylesheet || page?.styleSheet;
+                if (pageSheet) {
+                    if (typeof pageSheet === 'string') pageStylesheets.push(pageSheet);
+                    else if (Array.isArray(pageSheet)) {
+                        pageSheet.forEach(s => pageStylesheets.push(s.id || s['@id'] || s));
+                    } else pageStylesheets.push(pageSheet.id || pageSheet['@id']);
+                }
+                if (typeof page === 'string') {
+                    annotationPageRefs.push({ id: page, canvasId });
+                    return;
+                }
+                if (page && !page.items && !page.annotations && !page.resources && (page.id || page['@id'])) {
+                    annotationPageRefs.push({ id: page.id || page['@id'], canvasId });
+                    return;
+                }
+                const items = asArray(page?.items || page?.annotations || page?.resources);
+                items.forEach((anno) => {
+                    if (!anno) return;
+                    const motivation = anno.motivation || '';
+                    const textBodies = extractTextBodies(anno.body || anno.resource);
+                    if (!textBodies.length) return;
+                    if (String(motivation).includes('painting')) return;
+                    const targetInfo = parseTarget(anno.target || anno.on, canvasId);
+                    const html = textBodies.map(b => b.html).join('');
+                    const label = getLabel(anno.label) || textBodies[0]?.label || '';
+                    const id = getId(anno) || `${canvasId || 'canvas'}-anno-${annotations.length + 1}`;
+                    const stylesheets = [...pageStylesheets];
+                    const stylesheet = anno.stylesheet || anno.styleSheet;
+                    if (stylesheet) {
+                        if (typeof stylesheet === 'string') stylesheets.push(stylesheet);
+                        else if (Array.isArray(stylesheet)) {
+                            stylesheet.forEach(s => stylesheets.push(s.id || s['@id'] || s));
+                        } else stylesheets.push(stylesheet.id || stylesheet['@id']);
+                    }
+                    const styleClass = anno.styleClass || anno.class || anno.body?.styleClass || anno.target?.styleClass || '';
+                    annotations.push({
+                        id,
+                        label,
+                        html,
+                        canvasId: targetInfo.canvasId || canvasId,
+                        xywh: targetInfo.xywh,
+                        styleClass,
+                        stylesheets: stylesheets.filter(Boolean)
+                    });
+                });
+            });
+            return annotations;
         };
         const parseBody = (body) => {
             const bodies = asArray(body);
@@ -2526,7 +3144,7 @@ export class MimirExplorer {
             });
             return { imageSources, avItems, modelItems };
         };
-        const parseCanvas = (canvas) => {
+        const parseCanvas = (canvas, annotationPageRefs) => {
             const imageSources = [];
             const avItems = [];
             const modelItems = [];
@@ -2565,13 +3183,19 @@ export class MimirExplorer {
                 return null;
             };
             const thumbnail = pickThumb(canvas.thumbnail) || thumbFromSource(imageSources[0]) || null;
+            const annotations = [
+                ...parseAnnotationPages(canvas.annotations, getId(canvas), annotationPageRefs),
+                ...parseAnnotationPages(canvas.items, getId(canvas), annotationPageRefs),
+                ...parseAnnotationPages(canvas.otherContent, getId(canvas), annotationPageRefs)
+            ];
             return {
                 id: getId(canvas),
                 label: getLabel(canvas.label),
                 imageSources,
                 avItems,
                 modelItems,
-                thumbnail
+                thumbnail,
+                annotations
             };
         };
         const manifestType = getType(manifest).toLowerCase();
@@ -2618,30 +3242,44 @@ export class MimirExplorer {
         const imageSources = [];
         const avItems = [];
         const modelItems = [];
+        const annotationsByCanvasId = {};
+        const annotationPageRefs = [];
 
         const v3Canvases = asArray(manifest.items);
         if (v3Canvases.length) {
             v3Canvases.forEach(c => {
-                const parsed = parseCanvas(c);
+                const parsed = parseCanvas(c, annotationPageRefs);
                 const idx = canvases.length;
                 canvases.push({ id: parsed.id, label: parsed.label, thumbnail: parsed.thumbnail, imageSources: parsed.imageSources });
                 if (parsed.id) canvasIndexById[parsed.id] = idx;
                 imageSources.push(...parsed.imageSources);
                 avItems.push(...parsed.avItems);
                 modelItems.push(...parsed.modelItems);
+                parsed.annotations?.forEach((anno) => {
+                    const key = anno.canvasId || parsed.id;
+                    if (!key) return;
+                    if (!annotationsByCanvasId[key]) annotationsByCanvasId[key] = [];
+                    annotationsByCanvasId[key].push(anno);
+                });
             });
         }
         const v2Seq = asArray(manifest.sequences)[0];
         const v2Canvases = v2Seq ? asArray(v2Seq.canvases) : [];
         if (v2Canvases.length) {
             v2Canvases.forEach(c => {
-                const parsed = parseCanvas(c);
+                const parsed = parseCanvas(c, annotationPageRefs);
                 const idx = canvases.length;
                 canvases.push({ id: parsed.id, label: parsed.label, thumbnail: parsed.thumbnail, imageSources: parsed.imageSources });
                 if (parsed.id) canvasIndexById[parsed.id] = idx;
                 imageSources.push(...parsed.imageSources);
                 avItems.push(...parsed.avItems);
                 modelItems.push(...parsed.modelItems);
+                parsed.annotations?.forEach((anno) => {
+                    const key = anno.canvasId || parsed.id;
+                    if (!key) return;
+                    if (!annotationsByCanvasId[key]) annotationsByCanvasId[key] = [];
+                    annotationsByCanvasId[key].push(anno);
+                });
             });
         }
 
@@ -2719,7 +3357,9 @@ export class MimirExplorer {
             rangesFlat,
             items,
             collectionLinks: dedupe(collectionLinks),
-            fulltext
+            fulltext,
+            annotationsByCanvasId,
+            annotationPageRefs
         };
 
         return parsed;
@@ -2731,6 +3371,9 @@ export class MimirExplorer {
         if (this.osdExplorer) { this.osdExplorer.destroy(); this.osdExplorer = null; }
         this.avItems = []; this.modelItems = []; this.currentAvIndex = 0; this.currentModelIndex = 0;
         this.currentParsed = null;
+        this.currentAnnotations = [];
+        this.selectedAnnotationId = null;
+        if (this.els.annotationsLayer) this.els.annotationsLayer.innerHTML = '';
         this.els.root.classList.remove('mimir-ready');
         this.els.btns.sidebarToggle.classList.add('mimir-hidden');
         this.els.btns.infoToggle.classList.add('mimir-hidden');
