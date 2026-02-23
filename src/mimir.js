@@ -234,7 +234,7 @@ export class MimirExplorer {
                     
                     <!-- Watermark -->
                     <div class="mimir-watermark">
-                        <img id="mimir-watermark" src="${this.options.logoUrl || ''}" alt="" class="w-10 h-auto">
+                        <img id="mimir-watermark" src="${this.options.logoUrl || ''}" alt="" class="mimir-watermark-logo">
                         <div id="mimir-render-mode" class="mimir-render-mode">CANVAS</div>
                     </div>
 
@@ -1053,6 +1053,10 @@ export class MimirExplorer {
                 position: absolute; bottom: 1.5rem; right: 1.5rem;
                 opacity: 0.25; pointer-events: none;
                 display: flex; flex-direction: column; align-items: flex-end; gap: 0.35rem;
+            }
+            .mimir-watermark-logo {
+                width: 36px;
+                height: auto;
             }
             .mimir-render-mode {
                 font-size: 0.6rem; letter-spacing: 0.2em; text-transform: uppercase;
