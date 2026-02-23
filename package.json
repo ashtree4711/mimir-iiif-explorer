@@ -1,5 +1,5 @@
 {
-    "name": "mimir-iiif-explorer",
+    "name": "@mimir-iiif/explorer",
     "version": "0.2.0",
     "description": "Mimir IIIF explorer viewer (image, presentation, AV, and 3D) built on OpenSeadragon.",
     "type": "module",
