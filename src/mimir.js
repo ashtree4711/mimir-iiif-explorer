@@ -152,6 +152,7 @@ export class MimirExplorer {
         this.fulltextPageRefs = [];
         this.fulltextByCanvasId = {};
         this.currentFulltextLines = [];
+        this.fulltextMode = 'lines'; // lines | flow
 
         // Apply theme color as CSS variable
         this.container.style.setProperty('--mimir-primary', this.options.primaryColor);
@@ -400,7 +401,13 @@ export class MimirExplorer {
                     </div>
                     <div class="mimir-sidebar-body">
                         <div id="mimir-metadata" class="mimir-tab-panel" data-panel="metadata"></div>
-                        <div id="mimir-fulltext" class="mimir-tab-panel mimir-hidden" data-panel="fulltext"></div>
+                        <div id="mimir-fulltext" class="mimir-tab-panel mimir-hidden" data-panel="fulltext">
+                            <div class="mimir-annotations-toolbar">
+                                <span></span>
+                                <button id="mimir-fulltext-toggle" class="mimir-chip">Flow</button>
+                            </div>
+                            <div id="mimir-fulltext-body"></div>
+                        </div>
                         <div id="mimir-annotations" class="mimir-tab-panel mimir-hidden" data-panel="annotations">
                             <div class="mimir-annotations-toolbar">
                                 <span id="mimir-annotations-count" class="mimir-annotations-count"></span>
@@ -440,6 +447,8 @@ export class MimirExplorer {
             pageTotal: this.container.querySelector('#mimir-page-total'),
             metadataContainer: this.container.querySelector('#mimir-metadata'),
             fulltextContainer: this.container.querySelector('#mimir-fulltext'),
+            fulltextBody: this.container.querySelector('#mimir-fulltext-body'),
+            fulltextToggle: this.container.querySelector('#mimir-fulltext-toggle'),
             annotationsContainer: this.container.querySelector('#mimir-annotations'),
             annotationsToggle: this.container.querySelector('#mimir-annotations-toggle'),
             annotationsCount: this.container.querySelector('#mimir-annotations-count'),
@@ -970,23 +979,26 @@ export class MimirExplorer {
                 display: grid;
                 gap: 0.5rem;
             }
-            .mimir-ocr-line {
-                padding: 0.5rem 0.6rem;
-                border-radius: 0.6rem;
+            .mimir-ocr-card {
+                padding: 0.75rem;
+                border-radius: 0.8rem;
                 border: 1px solid rgba(17,17,17,0.08);
                 background: rgba(17,17,17,0.03);
-                font-size: 0.74rem;
                 color: #111111;
-                text-align: left;
+                font-size: 0.78rem;
+                line-height: 1.5;
+                white-space: pre-wrap;
             }
-            .mimir-ocr-line.is-active {
-                border-color: rgba(var(--mimir-primary-rgb), 0.45);
+            .mimir-ocr-span {
+                padding: 0.1rem 0.15rem;
+                border-radius: 0.25rem;
+                transition: background 0.15s ease;
+            }
+            .mimir-ocr-span.is-active {
+                background: rgba(var(--mimir-primary-rgb), 0.2);
+            }
+            .mimir-ocr-span.is-hover {
                 background: rgba(var(--mimir-primary-rgb), 0.12);
-                color: var(--mimir-primary);
-            }
-            .mimir-ocr-line.is-hover {
-                border-color: rgba(var(--mimir-primary-rgb), 0.35);
-                background: rgba(var(--mimir-primary-rgb), 0.08);
             }
             .mimir-ocr-box {
                 position: absolute;
@@ -1765,6 +1777,13 @@ export class MimirExplorer {
         if (this.els.annotationsToggle) {
             this.els.annotationsToggle.onclick = () => {
                 this.setAnnotationMode(this.annotationMode === 'all' ? 'single' : 'all');
+            };
+        }
+        if (this.els.fulltextToggle) {
+            this.els.fulltextToggle.onclick = () => {
+                this.fulltextMode = this.fulltextMode === 'lines' ? 'flow' : 'lines';
+                this.els.fulltextToggle.textContent = this.fulltextMode === 'lines' ? 'Flow' : 'Lines';
+                this.updateFulltextPanel(this.osdExplorer?.currentPage?.() || 0);
             };
         }
     }
@@ -2598,9 +2617,9 @@ export class MimirExplorer {
             this.els.metadataContainer.innerHTML = html;
             this.bindSidebarActions(parsed, this.els.metadataContainer);
         }
-        if (this.els.fulltextContainer) {
+        if (this.els.fulltextBody) {
             const text = parsed?.fulltext || '';
-            this.els.fulltextContainer.innerHTML = text
+            this.els.fulltextBody.innerHTML = text
                 ? `<div class="mimir-card"><p class="mimir-meta-title">Fulltext</p><p class="mimir-meta-value">${text}</p></div>`
                 : `<div class="mimir-card"><p class="mimir-meta-title">Fulltext</p><p class="mimir-meta-value">No fulltext available.</p></div>`;
         }
@@ -2732,18 +2751,22 @@ export class MimirExplorer {
         if (!lines.length) {
             const sources = this.fulltextSourcesByCanvasId[canvasId] || [];
             if (sources.length) {
-                this.els.fulltextContainer.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">Fulltext</p><p class="mimir-meta-value">Loading fulltext…</p></div>`;
+                if (this.els.fulltextBody) {
+                    this.els.fulltextBody.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">Fulltext</p><p class="mimir-meta-value">Loading fulltext…</p></div>`;
+                }
                 await this.fetchAndParseAlto(canvasId, sources);
             } else {
                 const keys = Object.keys(this.fulltextSourcesByCanvasId || {});
                 const keyInfo = keys.length ? `<p class="mimir-meta-value">Sources: ${this.escapeHtml(keys.join(', '))}</p>` : '';
-                this.els.fulltextContainer.innerHTML = `
-                    <div class="mimir-card">
-                        <p class="mimir-meta-title">Fulltext</p>
-                        <p class="mimir-meta-value">No fulltext available.</p>
-                        ${keyInfo}
-                    </div>
-                `;
+                if (this.els.fulltextBody) {
+                    this.els.fulltextBody.innerHTML = `
+                        <div class="mimir-card">
+                            <p class="mimir-meta-title">Fulltext</p>
+                            <p class="mimir-meta-value">No fulltext available.</p>
+                            ${keyInfo}
+                        </div>
+                    `;
+                }
                 if (this.els.fulltextLayer) this.els.fulltextLayer.innerHTML = '';
                 return;
             }
@@ -2751,31 +2774,48 @@ export class MimirExplorer {
         const finalLines = this.fulltextByCanvasId[canvasId] || [];
         this.currentFulltextLines = finalLines;
         if (!finalLines.length) {
-            this.els.fulltextContainer.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">Fulltext</p><p class="mimir-meta-value">No fulltext available.</p></div>`;
+            if (this.els.fulltextBody) {
+                this.els.fulltextBody.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">Fulltext</p><p class="mimir-meta-value">No fulltext available.</p></div>`;
+            }
             if (this.els.fulltextLayer) this.els.fulltextLayer.innerHTML = '';
             return;
         }
-        const html = finalLines.map((line, idx) => `
-            <button class="mimir-ocr-line" data-mimir-ocr-id="${line.id}">
-                ${this.escapeHtml(line.text || `Line ${idx + 1}`)}
-            </button>
-        `).join('');
-        this.els.fulltextContainer.innerHTML = `<div class="mimir-ocr-list">${html}</div>`;
-        this.els.fulltextContainer.querySelectorAll('[data-mimir-ocr-id]').forEach(btn => {
-            btn.onmouseenter = () => {
-                const id = btn.getAttribute('data-mimir-ocr-id');
-                this.showOcrPreview(id, true);
-            };
-            btn.onmouseleave = () => {
-                const id = btn.getAttribute('data-mimir-ocr-id');
-                this.showOcrPreview(id, false);
-            };
-            btn.onclick = () => {
-                const id = btn.getAttribute('data-mimir-ocr-id');
-                this.focusOcrLine(id);
-            };
-        });
+        const html = this.renderFulltextText(finalLines);
+        if (this.els.fulltextBody) {
+            this.els.fulltextBody.innerHTML = `<div class="mimir-ocr-card">${html}</div>`;
+            this.els.fulltextBody.querySelectorAll('[data-mimir-ocr-id]').forEach(span => {
+                span.onmouseenter = () => {
+                    const id = span.getAttribute('data-mimir-ocr-id');
+                    this.showOcrPreview(id, true);
+                };
+                span.onmouseleave = () => {
+                    const id = span.getAttribute('data-mimir-ocr-id');
+                    this.showOcrPreview(id, false);
+                };
+                span.onclick = () => {
+                    const id = span.getAttribute('data-mimir-ocr-id');
+                    this.focusOcrLine(id);
+                };
+            });
+        }
         this.updateFulltextOverlays();
+    }
+
+    renderFulltextText(lines) {
+        const parts = [];
+        let lastPara = null;
+        lines.forEach((line, idx) => {
+            const paraId = line.paragraphId || null;
+            const text = this.escapeHtml(line.text || `Line ${idx + 1}`);
+            if (this.fulltextMode === 'lines') {
+                if (idx > 0) parts.push(line.paragraphId && lastPara !== paraId ? '<br><br>' : '<br>');
+            } else {
+                if (idx > 0) parts.push(line.paragraphId && lastPara !== paraId ? '<br><br>' : ' ');
+            }
+            parts.push(`<span class="mimir-ocr-span" data-mimir-ocr-id="${line.id}">${text}</span>`);
+            lastPara = paraId;
+        });
+        return parts.join('');
     }
 
     async fetchAndParseAlto(canvasId, sources) {
@@ -2789,7 +2829,11 @@ export class MimirExplorer {
                 const res = await fetch(src);
                 if (!res.ok) return;
                 const text = await res.text();
-                const lines = this.parseAltoXml(text, canvasWidth, canvasHeight);
+                const lower = src.toLowerCase();
+                const isHocr = lower.includes('hocr') || /hocr/i.test(text);
+                const lines = isHocr
+                    ? this.parseHocr(text, canvasWidth, canvasHeight)
+                    : this.parseAltoXml(text, canvasWidth, canvasHeight);
                 lines.forEach(l => { l.canvasId = canvasId; });
                 allLines.push(...lines);
             } catch (err) {
@@ -2810,6 +2854,8 @@ export class MimirExplorer {
         const lines = [];
         const textLines = Array.from(doc.getElementsByTagName('TextLine'));
         textLines.forEach((lineEl, idx) => {
+            const paraEl = lineEl.closest ? lineEl.closest('TextBlock,TextBlockType') : null;
+            const paragraphId = paraEl?.getAttribute?.('ID') || paraEl?.getAttribute?.('id') || null;
             const x = Number(lineEl.getAttribute('HPOS') || 0) * scaleX;
             const y = Number(lineEl.getAttribute('VPOS') || 0) * scaleY;
             const w = Number(lineEl.getAttribute('WIDTH') || 0) * scaleX;
@@ -2819,7 +2865,40 @@ export class MimirExplorer {
             lines.push({
                 id: `line-${idx}-${x}-${y}`,
                 text,
-                box: { x, y, w, h }
+                box: { x, y, w, h },
+                paragraphId
+            });
+        });
+        return lines;
+    }
+
+    parseHocr(htmlText, canvasWidth, canvasHeight) {
+        if (!htmlText || typeof DOMParser === 'undefined') return [];
+        const doc = new DOMParser().parseFromString(htmlText, 'text/html');
+        const page = doc.querySelector('.ocr_page');
+        const pageBox = page?.getAttribute('title') || '';
+        const pageMatch = pageBox.match(/bbox\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)/);
+        const pageW = pageMatch ? Number(pageMatch[3]) : 0;
+        const pageH = pageMatch ? Number(pageMatch[4]) : 0;
+        const scaleX = pageW && canvasWidth ? canvasWidth / pageW : 1;
+        const scaleY = pageH && canvasHeight ? canvasHeight / pageH : 1;
+        const lines = [];
+        const lineEls = Array.from(doc.querySelectorAll('.ocr_line, .ocrx_line'));
+        lineEls.forEach((lineEl, idx) => {
+            const title = lineEl.getAttribute('title') || '';
+            const match = title.match(/bbox\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)/);
+            const x = match ? Number(match[1]) * scaleX : 0;
+            const y = match ? Number(match[2]) * scaleY : 0;
+            const w = match ? (Number(match[3]) - Number(match[1])) * scaleX : 0;
+            const h = match ? (Number(match[4]) - Number(match[2])) * scaleY : 0;
+            const text = lineEl.textContent?.trim() || '';
+            const paraEl = lineEl.closest('.ocr_par');
+            const paragraphId = paraEl?.getAttribute('id') || null;
+            lines.push({
+                id: `hocr-${idx}-${x}-${y}`,
+                text,
+                box: { x, y, w, h },
+                paragraphId
             });
         });
         return lines;
@@ -2830,6 +2909,7 @@ export class MimirExplorer {
         this.els.fulltextLayer.innerHTML = '';
         if (!this.osdExplorer || !this.currentFulltextLines?.length) return;
         this.currentFulltextLines.forEach((line) => {
+            if (!line.box || !Number.isFinite(line.box.w) || !Number.isFinite(line.box.h)) return;
             const rect = this.getRectPxFromImage(line.box);
             if (!rect) return;
             const box = document.createElement('div');
@@ -2848,7 +2928,7 @@ export class MimirExplorer {
 
     showOcrPreview(id, show) {
         const box = this.els.fulltextLayer?.querySelector(`[data-mimir-ocr-id="${id}"]`);
-        const item = this.els.fulltextContainer?.querySelector(`[data-mimir-ocr-id="${id}"]`);
+        const item = this.els.fulltextBody?.querySelector(`[data-mimir-ocr-id="${id}"]`);
         if (box) box.classList.toggle('is-active', show);
         if (item) item.classList.toggle('is-hover', show);
     }
@@ -2858,9 +2938,9 @@ export class MimirExplorer {
             this.setRightOpen(true);
             this.setActiveTab(this.els.info, 'fulltext');
         }
-        const item = this.els.fulltextContainer?.querySelector(`[data-mimir-ocr-id="${id}"]`);
+        const item = this.els.fulltextBody?.querySelector(`[data-mimir-ocr-id="${id}"]`);
         if (item) {
-            this.els.fulltextContainer.querySelectorAll('.mimir-ocr-line.is-active').forEach(el => el.classList.remove('is-active'));
+            this.els.fulltextBody.querySelectorAll('.mimir-ocr-span.is-active').forEach(el => el.classList.remove('is-active'));
             item.classList.add('is-active');
             item.scrollIntoView({ block: 'nearest' });
         }
