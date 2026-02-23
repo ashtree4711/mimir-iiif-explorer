@@ -1,0 +1,30 @@
+{
+    "name": "mimir-iiif-explorer",
+    "version": "0.1.0",
+    "description": "Mimir IIIF explorer viewer (image, presentation, AV, and 3D) built on OpenSeadragon.",
+    "type": "module",
+    "main": "./dist/mimir.umd.cjs",
+    "module": "./dist/mimir.es.js",
+    "scripts": {
+        "build": "node scripts/check-assets.js && vite build"
+    },
+    "exports": {
+        ".": {
+            "import": "./dist/mimir.es.js",
+            "require": "./dist/mimir.umd.cjs"
+        }
+    },
+    "files": [
+        "dist",
+        "src"
+    ],
+    "sideEffects": false,
+    "devDependencies": {
+        "vite": "^7.0.7"
+    },
+    "dependencies": {
+        "@tabler/icons": "^3.0.0",
+        "@google/model-viewer": "^4.1.0",
+        "openseadragon": "^6.0.0"
+    }
+}
