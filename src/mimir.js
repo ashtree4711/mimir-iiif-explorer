@@ -528,6 +528,15 @@ export class MimirExplorer {
         // Show initial message
         this.showMessage('Ready to Explore');
         this.updateBottomBarOffset();
+
+        // Auto-load manifest from URL query (?manifest=...)
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            const manifestUrl = params.get('manifest');
+            if (manifestUrl) {
+                this.loadManifest(manifestUrl);
+            }
+        }
     }
 
     injectStyles() {
