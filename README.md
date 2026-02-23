@@ -1,6 +1,9 @@
 # Mimir IIIF Explorer
 
-![Mimir logo](src/assets/mimir_logo_lightmode.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/mimir_dark.png">
+  <img alt="Mimir logo" src="docs/mimir_light.png" width="320">
+</picture>
 
 ## Idea
 Mimir IIIF Explorer is a modular IIIF viewer focused on image, AV, and 3D experiences with a clean, modern UI. It is designed as a small, embeddable library that renders a complete interface inside a host container.
