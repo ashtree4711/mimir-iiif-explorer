@@ -2076,7 +2076,7 @@ export class MimirExplorer {
         if (licenseUrl || licenseIcons) {
             html += `<div class="mimir-card mimir-card-compact">
                 <div class="mimir-info-section">
-                    <div class="mimir-info-label">Rechte</div>
+                    <div class="mimir-info-label">Rights</div>
                     <div class="mimir-info-row mimir-info-divider"></div>
                     <div class="mimir-info-row">
                         ${licenseIcons ? `<div class="mimir-license-badges">${licenseIcons}</div>` : ''}
