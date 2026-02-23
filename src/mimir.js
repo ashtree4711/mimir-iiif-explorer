@@ -147,6 +147,11 @@ export class MimirExplorer {
         this.selectedAnnotationId = null;
         this.currentAnnotations = [];
         this.annotationStylesheets = new Set();
+        this.pendingBookmarkPage = null;
+        this.fulltextSourcesByCanvasId = {};
+        this.fulltextPageRefs = [];
+        this.fulltextByCanvasId = {};
+        this.currentFulltextLines = [];
 
         // Apply theme color as CSS variable
         this.container.style.setProperty('--mimir-primary', this.options.primaryColor);
@@ -211,6 +216,7 @@ export class MimirExplorer {
                     </div>
 
                     <div id="mimir-osd" class="absolute inset-0"></div>
+                    <div id="mimir-fulltext-layer" class="mimir-fulltext-layer"></div>
                     <div id="mimir-annotations-layer" class="mimir-annotations-layer"></div>
                     <div id="mimir-av" class="absolute inset-0 flex items-center justify-center mimir-hidden text-white"></div>
                     <div id="mimir-3d" class="absolute inset-0 flex items-center justify-center mimir-hidden"></div>
@@ -295,15 +301,19 @@ export class MimirExplorer {
 
                     <!-- BOTTOM BAR (Unified) -->
                     <div id="mimir-bottom-bar" class="mimir-bottom-bar mimir-toolbar-hidden">
-                        <div class="mimir-bottom-group">
-                            <button id="mimir-home" class="mimir-icon-btn" title="Back to Start">
-                                ${ICONS.home}
-                            </button>
-                            <span class="mimir-divider"></span>
-                            <div class="mimir-zoom">
-                                <button id="mimir-zoom" class="mimir-icon-btn" title="Zoom">
-                                    ${ICONS.zoomIn}
+                            <div class="mimir-bottom-group">
+                                <button id="mimir-home" class="mimir-icon-btn" title="Back to Start">
+                                    ${ICONS.home}
                                 </button>
+                                <span class="mimir-divider"></span>
+                                <button id="mimir-bookmark-add" class="mimir-icon-btn" title="Add Bookmark">
+                                    ${ICONS.bookmark}
+                                </button>
+                                <span class="mimir-divider"></span>
+                                <div class="mimir-zoom">
+                                    <button id="mimir-zoom" class="mimir-icon-btn" title="Zoom">
+                                        ${ICONS.zoomIn}
+                                    </button>
                                 <div id="mimir-zoom-pop" class="mimir-zoom-pop mimir-hidden">
                                     <input type="range" id="mimir-zoom-slider" min="0.5" max="4" step="0.01" value="1">
                                 </div>
@@ -410,6 +420,7 @@ export class MimirExplorer {
             info: this.container.querySelector('#mimir-info'),
             infoClose: this.container.querySelector('#mimir-info-close'),
             osd: this.container.querySelector('#mimir-osd'),
+            fulltextLayer: this.container.querySelector('#mimir-fulltext-layer'),
             annotationsLayer: this.container.querySelector('#mimir-annotations-layer'),
             av: this.container.querySelector('#mimir-av'),
             threeD: this.container.querySelector('#mimir-3d'),
@@ -483,6 +494,7 @@ export class MimirExplorer {
                 filterGreen: this.container.querySelector('#mimir-filter-green'),
                 filterBlue: this.container.querySelector('#mimir-filter-blue'),
                 zoom: this.container.querySelector('#mimir-zoom'),
+                bookmarkAdd: this.container.querySelector('#mimir-bookmark-add'),
                 prev: this.container.querySelector('#mimir-prev'),
                 next: this.container.querySelector('#mimir-next'),
                 home: this.container.querySelector('#mimir-home'),
@@ -823,6 +835,53 @@ export class MimirExplorer {
                 color: #6b7280;
                 font-weight: 600;
             }
+            .mimir-bookmarks {
+                display: grid;
+                gap: 0.5rem;
+            }
+            .mimir-bookmarks-group {
+                display: grid;
+                gap: 0.35rem;
+            }
+            .mimir-bookmarks-title {
+                font-size: 0.68rem;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: #6b7280;
+                margin-bottom: 0.1rem;
+            }
+            .mimir-bookmark-item {
+                display: grid;
+                grid-template-columns: 1fr auto;
+                align-items: center;
+                gap: 0.4rem;
+                padding: 0.35rem 0.5rem;
+                border-radius: 0.55rem;
+                border: 1px solid rgba(17,17,17,0.08);
+                background: rgba(17,17,17,0.03);
+                font-size: 0.72rem;
+                color: #111111;
+            }
+            .mimir-bookmark-item:hover {
+                border-color: rgba(var(--mimir-primary-rgb), 0.35);
+                background: rgba(var(--mimir-primary-rgb), 0.08);
+                color: var(--mimir-primary);
+            }
+            .mimir-bookmark-label {
+                background: transparent;
+                border: none;
+                padding: 0;
+                margin: 0;
+                text-align: left;
+                cursor: pointer;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .mimir-bookmark-remove {
+                padding: 0.15rem 0.3rem;
+            }
             .mimir-annotations-list {
                 display: grid;
                 gap: 0.6rem;
@@ -862,6 +921,12 @@ export class MimirExplorer {
                 z-index: 20;
                 pointer-events: none;
             }
+            .mimir-fulltext-layer {
+                position: absolute;
+                inset: 0;
+                z-index: 19;
+                pointer-events: none;
+            }
             .mimir-anno-box {
                 position: absolute;
                 border: 2px solid rgba(var(--mimir-primary-rgb), 0.85);
@@ -891,6 +956,42 @@ export class MimirExplorer {
                 background: rgba(17,17,17,0.95);
                 color: #f8fafc;
                 border-color: rgba(255,255,255,0.12);
+            }
+            .mimir-ocr-list {
+                display: grid;
+                gap: 0.5rem;
+            }
+            .mimir-ocr-line {
+                padding: 0.5rem 0.6rem;
+                border-radius: 0.6rem;
+                border: 1px solid rgba(17,17,17,0.08);
+                background: rgba(17,17,17,0.03);
+                font-size: 0.74rem;
+                color: #111111;
+                text-align: left;
+            }
+            .mimir-ocr-line.is-active {
+                border-color: rgba(var(--mimir-primary-rgb), 0.45);
+                background: rgba(var(--mimir-primary-rgb), 0.12);
+                color: var(--mimir-primary);
+            }
+            .mimir-ocr-line.is-hover {
+                border-color: rgba(var(--mimir-primary-rgb), 0.35);
+                background: rgba(var(--mimir-primary-rgb), 0.08);
+            }
+            .mimir-ocr-box {
+                position: absolute;
+                border: 1.5px solid rgba(var(--mimir-primary-rgb), 0.85);
+                background: transparent;
+                border-radius: 0.3rem;
+                pointer-events: auto;
+                opacity: 0;
+                transition: opacity 0.15s ease;
+            }
+            .mimir-ocr-box.is-active {
+                background: rgba(var(--mimir-primary-rgb), 0.18);
+                border-color: rgba(var(--mimir-primary-rgb), 1);
+                opacity: 1;
             }
             .mimir-list-label {
                 overflow: hidden;
@@ -1643,6 +1744,9 @@ export class MimirExplorer {
         };
         this.els.btns.topFullscreen.onclick = this.els.btns.fullscreen.onclick;
         this.els.btns.download.onclick = () => this.downloadCurrentImage();
+        if (this.els.btns.bookmarkAdd) {
+            this.els.btns.bookmarkAdd.onclick = () => this.addBookmark();
+        }
         document.addEventListener('fullscreenchange', () => {
             const isFull = !!document.fullscreenElement;
             this.els.btns.fullscreen.innerHTML = isFull ? ICONS.minimize : ICONS.maximize;
@@ -1921,8 +2025,11 @@ export class MimirExplorer {
             this.currentAvIndex = 0;
             this.currentModelIndex = 0;
             this.currentParsed = this.parseManifest(manifest);
+            this.fulltextSourcesByCanvasId = this.currentParsed.fulltextSourcesByCanvasId || {};
+            this.fulltextPageRefs = this.currentParsed.fulltextPageRefs || [];
             this.render(this.currentParsed.type, manifest, this.currentParsed);
             this.fetchAnnotationPages(this.currentParsed.annotationPageRefs || []);
+            this.fetchFulltextPages(this.fulltextPageRefs || []);
         } catch (error) {
             console.error('Mimir: Error loading manifest', error);
             this.showMessage(`Error: ${error.message}`);
@@ -1958,6 +2065,57 @@ export class MimirExplorer {
             }
         }));
         this.updateAnnotationsPanel(this.osdExplorer?.currentPage?.() || 0);
+    }
+
+    async fetchFulltextPages(refs) {
+        if (!refs?.length) return;
+        const unique = Array.from(new Map(refs.filter(r => r?.id).map(r => [r.id, r])).values());
+        await Promise.all(unique.map(async (ref) => {
+            try {
+                const response = await fetch(ref.id);
+                if (!response.ok) return;
+                const page = await response.json();
+                const items = (page.items || page.annotations || page.resources || []);
+                const sources = this.extractAltoSourcesFromItems(items);
+                if (!sources.length) return;
+                const key = ref.canvasId;
+                if (!key) return;
+                if (!this.fulltextSourcesByCanvasId[key]) this.fulltextSourcesByCanvasId[key] = [];
+                sources.forEach(src => {
+                    if (!this.fulltextSourcesByCanvasId[key].includes(src)) {
+                        this.fulltextSourcesByCanvasId[key].push(src);
+                    }
+                });
+            } catch (err) {
+                console.warn('Mimir: Failed to load fulltext page', ref.id, err);
+            }
+        }));
+        this.updateFulltextPanel(this.osdExplorer?.currentPage?.() || 0);
+    }
+
+    extractAltoSourcesFromItems(items) {
+        const asArray = (val) => (Array.isArray(val) ? val : (val ? [val] : []));
+        const getType = (obj) => (obj && (obj.type || obj['@type'])) || '';
+        const sources = [];
+        asArray(items).forEach((anno) => {
+            const motivation = anno?.motivation || '';
+            if (String(motivation).includes('painting')) return;
+            const bodies = asArray(anno?.body || anno?.resource);
+            bodies.forEach((b) => {
+                if (!b) return;
+                if (getType(b) === 'SpecificResource' && b.source) {
+                    sources.push(...this.extractAltoSourcesFromItems([b.source]));
+                    return;
+                }
+                const id = b.id || b['@id'] || (typeof b === 'string' ? b : '');
+                const format = b.format || '';
+                if (!id) return;
+                if (format.includes('alto') || format.includes('xml') || id.endsWith('.xml')) {
+                    sources.push(id);
+                }
+            });
+        });
+        return sources.filter(Boolean);
     }
 
     parseAnnotationPageItems(items, canvasId, pageStylesheets = []) {
@@ -2143,6 +2301,7 @@ export class MimirExplorer {
 
     renderImage(manifest, parsed) {
         this.els.osd.classList.remove('mimir-hidden'); this.showToolbar(true);
+        if (this.els.fulltextLayer) this.els.fulltextLayer.classList.remove('mimir-hidden');
         if (this.els.annotationsLayer) this.els.annotationsLayer.classList.remove('mimir-hidden');
         this.tileSources = parsed?.imageSources?.length ? parsed.imageSources : [];
         if (this.osdExplorer) this.osdExplorer.destroy();
@@ -2171,9 +2330,16 @@ export class MimirExplorer {
             visibilityRatio: 1, minZoomLevel: 0, defaultZoomLevel: 0, homeFillsExplorer: true,
             drawer: supportsWebGL ? ['webgl', 'canvas'] : ['canvas']
         });
-        this.osdExplorer.addHandler('open', () => this.updateAnnotationOverlays());
-        this.osdExplorer.addHandler('animation', () => this.updateAnnotationOverlays());
-        this.osdExplorer.addHandler('resize', () => this.updateAnnotationOverlays());
+        this.osdExplorer.addHandler('open', () => {
+            if (Number.isFinite(this.pendingBookmarkPage)) {
+                this.osdExplorer.goToPage(this.pendingBookmarkPage);
+                this.pendingBookmarkPage = null;
+            }
+            this.updateAnnotationOverlays();
+            this.updateFulltextOverlays();
+        });
+        this.osdExplorer.addHandler('animation', () => { this.updateAnnotationOverlays(); this.updateFulltextOverlays(); });
+        this.osdExplorer.addHandler('resize', () => { this.updateAnnotationOverlays(); this.updateFulltextOverlays(); });
         if (this.els.renderMode) this.els.renderMode.textContent = supportsWebGL ? 'WEBGL' : 'CANVAS';
         if (this.els.zoomSlider) this.els.zoomSlider.value = 1;
         this.zoomValue = 1;
@@ -2219,6 +2385,7 @@ export class MimirExplorer {
         this.highlightActiveCanvas(osdPageIndex, true);
         this.highlightActiveOutline(osdPageIndex);
         this.updateAnnotationsPanel(osdPageIndex);
+        this.updateFulltextPanel(osdPageIndex);
     }
 
     highlightActiveCanvas(osdPageIndex, scroll) {
@@ -2429,6 +2596,8 @@ export class MimirExplorer {
                 : `<div class="mimir-card"><p class="mimir-meta-title">Fulltext</p><p class="mimir-meta-value">No fulltext available.</p></div>`;
         }
         this.updateAnnotationsPanel(0);
+        this.updateFulltextPanel(0);
+        this.updateBookmarks();
     }
 
     escapeHtml(text) {
@@ -2536,6 +2705,174 @@ export class MimirExplorer {
         this.updateAnnotationOverlays();
     }
 
+    async updateFulltextPanel(pageIndex = null) {
+        if (!this.els.fulltextContainer) return;
+        let canvasId = pageIndex === null
+            ? this.currentFulltextLines?.[0]?.canvasId
+            : this.currentParsed?.canvases?.[pageIndex]?.id;
+        if (!canvasId) {
+            this.els.fulltextContainer.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">Fulltext</p><p class="mimir-meta-value">No fulltext available.</p></div>`;
+            return;
+        }
+        const allSourcesMap = this.fulltextSourcesByCanvasId || {};
+        if (!allSourcesMap[canvasId]) {
+            const keys = Object.keys(allSourcesMap);
+            if (keys.length === 1) canvasId = keys[0];
+        }
+        const lines = this.fulltextByCanvasId[canvasId] || [];
+        if (!lines.length) {
+            const sources = this.fulltextSourcesByCanvasId[canvasId] || [];
+            if (sources.length) {
+                this.els.fulltextContainer.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">Fulltext</p><p class="mimir-meta-value">Loading fulltext…</p></div>`;
+                await this.fetchAndParseAlto(canvasId, sources);
+            } else {
+                const keys = Object.keys(this.fulltextSourcesByCanvasId || {});
+                const keyInfo = keys.length ? `<p class="mimir-meta-value">Sources: ${this.escapeHtml(keys.join(', '))}</p>` : '';
+                this.els.fulltextContainer.innerHTML = `
+                    <div class="mimir-card">
+                        <p class="mimir-meta-title">Fulltext</p>
+                        <p class="mimir-meta-value">No fulltext available.</p>
+                        ${keyInfo}
+                    </div>
+                `;
+                if (this.els.fulltextLayer) this.els.fulltextLayer.innerHTML = '';
+                return;
+            }
+        }
+        const finalLines = this.fulltextByCanvasId[canvasId] || [];
+        this.currentFulltextLines = finalLines;
+        if (!finalLines.length) {
+            this.els.fulltextContainer.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">Fulltext</p><p class="mimir-meta-value">No fulltext available.</p></div>`;
+            if (this.els.fulltextLayer) this.els.fulltextLayer.innerHTML = '';
+            return;
+        }
+        const html = finalLines.map((line, idx) => `
+            <button class="mimir-ocr-line" data-mimir-ocr-id="${line.id}">
+                ${this.escapeHtml(line.text || `Line ${idx + 1}`)}
+            </button>
+        `).join('');
+        this.els.fulltextContainer.innerHTML = `<div class="mimir-ocr-list">${html}</div>`;
+        this.els.fulltextContainer.querySelectorAll('[data-mimir-ocr-id]').forEach(btn => {
+            btn.onmouseenter = () => {
+                const id = btn.getAttribute('data-mimir-ocr-id');
+                this.showOcrPreview(id, true);
+            };
+            btn.onmouseleave = () => {
+                const id = btn.getAttribute('data-mimir-ocr-id');
+                this.showOcrPreview(id, false);
+            };
+            btn.onclick = () => {
+                const id = btn.getAttribute('data-mimir-ocr-id');
+                this.focusOcrLine(id);
+            };
+        });
+        this.updateFulltextOverlays();
+    }
+
+    async fetchAndParseAlto(canvasId, sources) {
+        if (!sources?.length) return;
+        const canvas = this.currentParsed?.canvases?.find(c => c.id === canvasId);
+        const canvasWidth = canvas?.width || this.currentManifest?.items?.find(i => i.id === canvasId)?.width || 0;
+        const canvasHeight = canvas?.height || this.currentManifest?.items?.find(i => i.id === canvasId)?.height || 0;
+        const allLines = [];
+        await Promise.all(sources.map(async (src) => {
+            try {
+                const res = await fetch(src);
+                if (!res.ok) return;
+                const text = await res.text();
+                const lines = this.parseAltoXml(text, canvasWidth, canvasHeight);
+                lines.forEach(l => { l.canvasId = canvasId; });
+                allLines.push(...lines);
+            } catch (err) {
+                console.warn('Mimir: Failed to load ALTO', src, err);
+            }
+        }));
+        this.fulltextByCanvasId[canvasId] = allLines;
+    }
+
+    parseAltoXml(xmlText, canvasWidth, canvasHeight) {
+        if (!xmlText || typeof DOMParser === 'undefined') return [];
+        const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+        const page = doc.getElementsByTagName('Page')[0];
+        const pageW = Number(page?.getAttribute('WIDTH') || 0);
+        const pageH = Number(page?.getAttribute('HEIGHT') || 0);
+        const scaleX = pageW && canvasWidth ? canvasWidth / pageW : 1;
+        const scaleY = pageH && canvasHeight ? canvasHeight / pageH : 1;
+        const lines = [];
+        const textLines = Array.from(doc.getElementsByTagName('TextLine'));
+        textLines.forEach((lineEl, idx) => {
+            const x = Number(lineEl.getAttribute('HPOS') || 0) * scaleX;
+            const y = Number(lineEl.getAttribute('VPOS') || 0) * scaleY;
+            const w = Number(lineEl.getAttribute('WIDTH') || 0) * scaleX;
+            const h = Number(lineEl.getAttribute('HEIGHT') || 0) * scaleY;
+            const strings = Array.from(lineEl.getElementsByTagName('String'));
+            const text = strings.map(s => s.getAttribute('CONTENT')).filter(Boolean).join(' ').trim();
+            lines.push({
+                id: `line-${idx}-${x}-${y}`,
+                text,
+                box: { x, y, w, h }
+            });
+        });
+        return lines;
+    }
+
+    updateFulltextOverlays() {
+        if (!this.els.fulltextLayer) return;
+        this.els.fulltextLayer.innerHTML = '';
+        if (!this.osdExplorer || !this.currentFulltextLines?.length) return;
+        this.currentFulltextLines.forEach((line) => {
+            const rect = this.getRectPxFromImage(line.box);
+            if (!rect) return;
+            const box = document.createElement('div');
+            box.className = 'mimir-ocr-box';
+            box.style.left = `${rect.x}px`;
+            box.style.top = `${rect.y}px`;
+            box.style.width = `${rect.width}px`;
+            box.style.height = `${rect.height}px`;
+            box.dataset.mimirOcrId = line.id;
+            this.els.fulltextLayer.appendChild(box);
+            box.addEventListener('mouseenter', () => this.showOcrPreview(line.id, true));
+            box.addEventListener('mouseleave', () => this.showOcrPreview(line.id, false));
+            box.addEventListener('click', () => this.focusOcrLine(line.id, true));
+        });
+    }
+
+    showOcrPreview(id, show) {
+        const box = this.els.fulltextLayer?.querySelector(`[data-mimir-ocr-id="${id}"]`);
+        const item = this.els.fulltextContainer?.querySelector(`[data-mimir-ocr-id="${id}"]`);
+        if (box) box.classList.toggle('is-active', show);
+        if (item) item.classList.toggle('is-hover', show);
+    }
+
+    focusOcrLine(id, openTab = false) {
+        if (openTab) {
+            this.setRightOpen(true);
+            this.setActiveTab(this.els.info, 'fulltext');
+        }
+        const item = this.els.fulltextContainer?.querySelector(`[data-mimir-ocr-id="${id}"]`);
+        if (item) {
+            this.els.fulltextContainer.querySelectorAll('.mimir-ocr-line.is-active').forEach(el => el.classList.remove('is-active'));
+            item.classList.add('is-active');
+            item.scrollIntoView({ block: 'nearest' });
+        }
+        const box = this.els.fulltextLayer?.querySelector(`[data-mimir-ocr-id="${id}"]`);
+        if (box) box.classList.add('is-active');
+    }
+
+    getRectPxFromImage(box) {
+        if (!this.osdExplorer || !box) return null;
+        const rect = new OpenSeadragon.Rect(box.x, box.y, box.w, box.h);
+        const vRect = this.osdExplorer.viewport.imageToViewportRectangle(rect);
+        const tl = this.osdExplorer.viewport.pixelFromPoint(vRect.getTopLeft(), true);
+        const br = this.osdExplorer.viewport.pixelFromPoint(vRect.getBottomRight(), true);
+        return {
+            x: tl.x,
+            y: tl.y,
+            width: Math.max(1, br.x - tl.x),
+            height: Math.max(1, br.y - tl.y)
+        };
+    }
+
     loadAnnotationStylesheets(list) {
         if (!list?.length) return;
         list.forEach((anno) => {
@@ -2547,6 +2884,103 @@ export class MimirExplorer {
                 document.head.appendChild(link);
                 this.annotationStylesheets.add(href);
             });
+        });
+    }
+
+    getManifestId() {
+        return this.currentManifest?.id || this.currentManifest?.['@id'] || '';
+    }
+
+    getBookmarks() {
+        const match = document.cookie.match(/(?:^|; )mimir_bookmarks=([^;]+)/);
+        if (!match) return [];
+        try {
+            return JSON.parse(decodeURIComponent(match[1])) || [];
+        } catch {
+            return [];
+        }
+    }
+
+    setBookmarks(list) {
+        const value = encodeURIComponent(JSON.stringify(list));
+        document.cookie = `mimir_bookmarks=${value}; path=/; max-age=31536000`;
+    }
+
+    addBookmark() {
+        if (!this.currentManifest) return;
+        const manifestId = this.getManifestId();
+        if (!manifestId) return;
+        const pageIndex = this.osdExplorer?.currentPage?.() ?? 0;
+        const label = this.currentParsed?.label || 'Untitled Manifest';
+        const entry = {
+            id: `${manifestId}::${pageIndex}`,
+            manifestId,
+            pageIndex,
+            label,
+            createdAt: Date.now()
+        };
+        const list = this.getBookmarks();
+        const exists = list.some(b => b.id === entry.id);
+        if (!exists) list.unshift(entry);
+        this.setBookmarks(list);
+        this.updateBookmarks();
+    }
+
+    removeBookmark(id) {
+        const list = this.getBookmarks().filter(b => b.id !== id);
+        this.setBookmarks(list);
+        this.updateBookmarks();
+    }
+
+    updateBookmarks() {
+        if (!this.els.structureBookmarks) return;
+        const list = this.getBookmarks();
+        if (!list.length) {
+            this.els.structureBookmarks.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">Bookmarks</p><p class="mimir-meta-value">No bookmarks saved.</p></div>`;
+            return;
+        }
+        const grouped = list.reduce((acc, b) => {
+            const key = b.manifestId || 'unknown';
+            if (!acc[key]) acc[key] = { label: b.label || key, items: [] };
+            acc[key].items.push(b);
+            return acc;
+        }, {});
+        const html = Object.values(grouped).map(group => {
+            const items = group.items.map((b) => `
+                <div class="mimir-bookmark-item">
+                    <button class="mimir-bookmark-label" data-mimir-bookmark="${b.id}">
+                        ${this.escapeHtml(group.label)} — p.${b.pageIndex + 1}
+                    </button>
+                    <button class="mimir-icon-btn mimir-bookmark-remove" title="Remove bookmark" data-mimir-bookmark-remove="${b.id}">${ICONS.close}</button>
+                </div>
+            `).join('');
+            return `
+                <div class="mimir-bookmarks-group">
+                    <div class="mimir-bookmarks-title">${this.escapeHtml(group.label)}</div>
+                    ${items}
+                </div>
+            `;
+        }).join('');
+        this.els.structureBookmarks.innerHTML = `<div class="mimir-bookmarks">${html}</div>`;
+        this.els.structureBookmarks.querySelectorAll('[data-mimir-bookmark]').forEach(btn => {
+            btn.onclick = () => {
+                const id = btn.getAttribute('data-mimir-bookmark');
+                const entry = list.find(b => b.id === id);
+                if (!entry) return;
+                if (this.getManifestId() === entry.manifestId) {
+                    if (this.osdExplorer && Number.isFinite(entry.pageIndex)) this.osdExplorer.goToPage(entry.pageIndex);
+                } else {
+                    this.pendingBookmarkPage = entry.pageIndex;
+                    this.loadManifest(entry.manifestId);
+                }
+            };
+        });
+        this.els.structureBookmarks.querySelectorAll('[data-mimir-bookmark-remove]').forEach(btn => {
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                const id = btn.getAttribute('data-mimir-bookmark-remove');
+                if (id) this.removeBookmark(id);
+            };
         });
     }
 
@@ -2835,6 +3269,7 @@ export class MimirExplorer {
 
     renderAV(manifest, parsed) {
         this.els.av.classList.remove('mimir-hidden'); this.showToolbar(true);
+        if (this.els.fulltextLayer) this.els.fulltextLayer.classList.add('mimir-hidden');
         if (this.els.annotationsLayer) this.els.annotationsLayer.classList.add('mimir-hidden');
         this.avItems = parsed?.avItems || [];
         if (this.avItems.length === 0) { this.showMessage("No audio/video items found."); return; }
@@ -2906,6 +3341,7 @@ export class MimirExplorer {
 
     render3D(manifest, parsed) {
         this.els.threeD.classList.remove('mimir-hidden'); this.showToolbar(true);
+        if (this.els.fulltextLayer) this.els.fulltextLayer.classList.add('mimir-hidden');
         if (this.els.annotationsLayer) this.els.annotationsLayer.classList.add('mimir-hidden');
         this.els.btns.zoom.classList.add('mimir-hidden'); this.els.btns.topBookToggle.classList.add('mimir-hidden');
         this.els.btns.filterToggle.classList.add('mimir-hidden');
@@ -3012,6 +3448,21 @@ export class MimirExplorer {
             }
             return null;
         };
+        const extractFulltextSourcesFromSeeAlso = (seeAlso) => {
+            const sources = [];
+            asArray(seeAlso).forEach((s) => {
+                if (!s) return;
+                const id = getId(s) || (typeof s === 'string' ? s : '');
+                if (!id) return;
+                const format = (s.format || '').toLowerCase();
+                const profile = (s.profile || '').toLowerCase();
+                const label = getLabel(s.label).toLowerCase();
+                const isAlto = format.includes('alto') || profile.includes('alto') || label.includes('alto') || id.toLowerCase().includes('alto');
+                const isXml = format.includes('xml') || id.toLowerCase().endsWith('.xml');
+                if (isAlto || isXml) sources.push(id);
+            });
+            return sources;
+        };
         const extractXYWH = (val) => {
             if (!val || typeof val !== 'string') return null;
             const match = val.match(/xywh=([^&]+)/);
@@ -3064,7 +3515,7 @@ export class MimirExplorer {
             });
             return results;
         };
-        const parseAnnotationPages = (pages, canvasId, annotationPageRefs) => {
+        const parseAnnotationPages = (pages, canvasId, annotationPageRefs, fulltextPageRefs, fulltextSourcesByCanvasId) => {
             const annotations = [];
             asArray(pages).forEach(page => {
                 const pageStylesheets = [];
@@ -3077,13 +3528,24 @@ export class MimirExplorer {
                 }
                 if (typeof page === 'string') {
                     annotationPageRefs.push({ id: page, canvasId });
+                    fulltextPageRefs.push({ id: page, canvasId });
                     return;
                 }
                 if (page && !page.items && !page.annotations && !page.resources && (page.id || page['@id'])) {
                     annotationPageRefs.push({ id: page.id || page['@id'], canvasId });
+                    fulltextPageRefs.push({ id: page.id || page['@id'], canvasId });
                     return;
                 }
                 const items = asArray(page?.items || page?.annotations || page?.resources);
+                const fulltextSources = this.extractAltoSourcesFromItems(items);
+                if (fulltextSources.length) {
+                    if (!fulltextSourcesByCanvasId[canvasId]) fulltextSourcesByCanvasId[canvasId] = [];
+                    fulltextSources.forEach(src => {
+                        if (!fulltextSourcesByCanvasId[canvasId].includes(src)) {
+                            fulltextSourcesByCanvasId[canvasId].push(src);
+                        }
+                    });
+                }
                 items.forEach((anno) => {
                     if (!anno) return;
                     const motivation = anno.motivation || '';
@@ -3141,7 +3603,7 @@ export class MimirExplorer {
             });
             return { imageSources, avItems, modelItems };
         };
-        const parseCanvas = (canvas, annotationPageRefs) => {
+        const parseCanvas = (canvas, annotationPageRefs, fulltextPageRefs, fulltextSourcesByCanvasId) => {
             const imageSources = [];
             const avItems = [];
             const modelItems = [];
@@ -3181,10 +3643,20 @@ export class MimirExplorer {
             };
             const thumbnail = pickThumb(canvas.thumbnail) || thumbFromSource(imageSources[0]) || null;
             const annotations = [
-                ...parseAnnotationPages(canvas.annotations, getId(canvas), annotationPageRefs),
-                ...parseAnnotationPages(canvas.items, getId(canvas), annotationPageRefs),
-                ...parseAnnotationPages(canvas.otherContent, getId(canvas), annotationPageRefs)
+                ...parseAnnotationPages(canvas.annotations, getId(canvas), annotationPageRefs, fulltextPageRefs, fulltextSourcesByCanvasId),
+                ...parseAnnotationPages(canvas.items, getId(canvas), annotationPageRefs, fulltextPageRefs, fulltextSourcesByCanvasId),
+                ...parseAnnotationPages(canvas.otherContent, getId(canvas), annotationPageRefs, fulltextPageRefs, fulltextSourcesByCanvasId)
             ];
+            const seeAlsoSources = extractFulltextSourcesFromSeeAlso(canvas.seeAlso);
+            if (seeAlsoSources.length) {
+                const key = getId(canvas);
+                if (key) {
+                    if (!fulltextSourcesByCanvasId[key]) fulltextSourcesByCanvasId[key] = [];
+                    seeAlsoSources.forEach(src => {
+                        if (!fulltextSourcesByCanvasId[key].includes(src)) fulltextSourcesByCanvasId[key].push(src);
+                    });
+                }
+            }
             return {
                 id: getId(canvas),
                 label: getLabel(canvas.label),
@@ -3241,11 +3713,13 @@ export class MimirExplorer {
         const modelItems = [];
         const annotationsByCanvasId = {};
         const annotationPageRefs = [];
+        const fulltextPageRefs = [];
+        const fulltextSourcesByCanvasId = {};
 
         const v3Canvases = asArray(manifest.items);
         if (v3Canvases.length) {
             v3Canvases.forEach(c => {
-                const parsed = parseCanvas(c, annotationPageRefs);
+                const parsed = parseCanvas(c, annotationPageRefs, fulltextPageRefs, fulltextSourcesByCanvasId);
                 const idx = canvases.length;
                 canvases.push({ id: parsed.id, label: parsed.label, thumbnail: parsed.thumbnail, imageSources: parsed.imageSources });
                 if (parsed.id) canvasIndexById[parsed.id] = idx;
@@ -3264,7 +3738,7 @@ export class MimirExplorer {
         const v2Canvases = v2Seq ? asArray(v2Seq.canvases) : [];
         if (v2Canvases.length) {
             v2Canvases.forEach(c => {
-                const parsed = parseCanvas(c, annotationPageRefs);
+                const parsed = parseCanvas(c, annotationPageRefs, fulltextPageRefs, fulltextSourcesByCanvasId);
                 const idx = canvases.length;
                 canvases.push({ id: parsed.id, label: parsed.label, thumbnail: parsed.thumbnail, imageSources: parsed.imageSources });
                 if (parsed.id) canvasIndexById[parsed.id] = idx;
@@ -3278,6 +3752,17 @@ export class MimirExplorer {
                     annotationsByCanvasId[key].push(anno);
                 });
             });
+        }
+
+        const manifestSeeAlso = extractFulltextSourcesFromSeeAlso(manifest.seeAlso);
+        if (manifestSeeAlso.length && canvases.length === 1) {
+            const key = canvases[0].id;
+            if (key) {
+                if (!fulltextSourcesByCanvasId[key]) fulltextSourcesByCanvasId[key] = [];
+                manifestSeeAlso.forEach(src => {
+                    if (!fulltextSourcesByCanvasId[key].includes(src)) fulltextSourcesByCanvasId[key].push(src);
+                });
+            }
         }
 
         const parseRanges = (ranges) => {
@@ -3356,7 +3841,9 @@ export class MimirExplorer {
             collectionLinks: dedupe(collectionLinks),
             fulltext,
             annotationsByCanvasId,
-            annotationPageRefs
+            annotationPageRefs,
+            fulltextPageRefs,
+            fulltextSourcesByCanvasId
         };
 
         return parsed;
@@ -3370,6 +3857,11 @@ export class MimirExplorer {
         this.currentParsed = null;
         this.currentAnnotations = [];
         this.selectedAnnotationId = null;
+        this.currentFulltextLines = [];
+        this.fulltextByCanvasId = {};
+        this.fulltextSourcesByCanvasId = {};
+        this.fulltextPageRefs = [];
+        if (this.els.fulltextLayer) this.els.fulltextLayer.innerHTML = '';
         if (this.els.annotationsLayer) this.els.annotationsLayer.innerHTML = '';
         this.els.root.classList.remove('mimir-ready');
         this.els.btns.sidebarToggle.classList.add('mimir-hidden');
