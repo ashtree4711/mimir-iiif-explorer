@@ -166,6 +166,7 @@ export class MimirExplorer {
         this.bookPages = [];
         this.bookPageIndex = 0;
         this.bookCenterPending = false;
+        this.bookCenterNeedsFit = false;
         this.bookGap = 0.005;
         this.layoutModeLocked = false;
         this.overlayUpdatePending = false;
@@ -1767,12 +1768,14 @@ export class MimirExplorer {
             const value = Number(this.els.zoomSlider.value);
             this.zoomValue = value;
             this.pendingZoomValue = value;
+            this.bookCenterNeedsFit = false;
             this.scheduleZoomUpdate();
         };
         this.els.zoomSlider.onchange = () => {
             const value = Number(this.els.zoomSlider.value);
             this.zoomValue = value;
             this.pendingZoomValue = value;
+            this.bookCenterNeedsFit = false;
             this.applyZoom();
         };
         this.els.btns.home.onclick = () => {
@@ -2581,7 +2584,8 @@ export class MimirExplorer {
             this.scheduleOverlayUpdate();
             if (this.isBookMode) {
                 this.goToBookPage(this.bookPageIndex, true);
-                this.centerBookSpread();
+                this.bookCenterNeedsFit = true;
+                this.centerBookSpread(true);
             } else if (this.isContinuousMode) {
                 this.centerContinuous();
             }
@@ -2656,6 +2660,7 @@ export class MimirExplorer {
         if (!this.isBookMode || !this.osdExplorer) return;
         const max = Math.max(0, this.bookPages.length - 1);
         this.bookPageIndex = Math.max(0, Math.min(max, index));
+        this.bookCenterNeedsFit = true;
         const spread = this.bookPages[this.bookPageIndex] || [];
         const world = this.osdExplorer.world;
         while (world.getItemCount() > 0) {
@@ -2680,8 +2685,9 @@ export class MimirExplorer {
         this.updateFulltextPanel(baseIndex);
     }
 
-    centerBookSpread() {
+    centerBookSpread(force = false) {
         if (!this.osdExplorer) return;
+        if (!force && !this.bookCenterNeedsFit) return;
         if (this.bookCenterPending) return;
         this.bookCenterPending = true;
         const applyCenter = () => {
@@ -2699,6 +2705,7 @@ export class MimirExplorer {
             this.osdExplorer.viewport.fitBounds(union, true);
             this.osdExplorer.viewport.panTo(union.getCenter(), true);
             if (this.osdExplorer.viewport.applyConstraints) this.osdExplorer.viewport.applyConstraints(true);
+            this.bookCenterNeedsFit = false;
             return true;
         };
         requestAnimationFrame(() => {
