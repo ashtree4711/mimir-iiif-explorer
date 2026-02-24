@@ -30,7 +30,7 @@
     },
     "dependencies": {
         "@tabler/icons": "^3.0.0",
-        "@google/model-viewer": "^4.1.0",
-        "openseadragon": "^6.0.0"
+        "openseadragon": "^6.0.0",
+        "three": "^0.168.0"
     }
 }

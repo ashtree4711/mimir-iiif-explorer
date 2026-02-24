@@ -1,5 +1,7 @@
 import OpenSeadragon from 'openseadragon';
-import '@google/model-viewer';
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import iconMenu from '@tabler/icons/outline/menu-2.svg?raw';
 import iconX from '@tabler/icons/outline/x.svg?raw';
 import iconHome from '@tabler/icons/outline/home.svg?raw';
@@ -32,12 +34,15 @@ import iconDownload from '@tabler/icons/outline/download.svg?raw';
 import iconFilter from '@tabler/icons/outline/adjustments-horizontal.svg?raw';
 import iconRotate from '@tabler/icons/outline/rotate.svg?raw';
 import iconRotateCw from '@tabler/icons/outline/rotate-clockwise.svg?raw';
+import iconSkewX from '@tabler/icons/outline/skew-x.svg?raw';
+import iconSkewY from '@tabler/icons/outline/skew-y.svg?raw';
 import iconFlipH from '@tabler/icons/outline/flip-horizontal.svg?raw';
 import iconFlipV from '@tabler/icons/outline/flip-vertical.svg?raw';
 import iconBrightness from '@tabler/icons/outline/brightness.svg?raw';
 import iconContrast from '@tabler/icons/outline/contrast.svg?raw';
 import iconColorFilter from '@tabler/icons/outline/color-filter.svg?raw';
 import iconPaletteOff from '@tabler/icons/outline/palette-off.svg?raw';
+import iconBulbFilled from '@tabler/icons/filled/bulb-filled.svg?raw';
 import iconList from '@tabler/icons/outline/list.svg?raw';
 import iconTree from '@tabler/icons/outline/list-tree.svg?raw';
 import iconStack from '@tabler/icons/outline/stack.svg?raw';
@@ -93,12 +98,15 @@ const ICONS = {
     filter: withIconClass(iconFilter),
     rotate: withIconClass(iconRotate),
     rotateCw: withIconClass(iconRotateCw),
+    skewX: withIconClass(iconSkewX),
+    skewY: withIconClass(iconSkewY),
     flipH: withIconClass(iconFlipH),
     flipV: withIconClass(iconFlipV),
     brightness: withIconClass(iconBrightness),
     contrast: withIconClass(iconContrast),
     colorFilter: withIconClass(iconColorFilter),
     paletteOff: withIconClass(iconPaletteOff),
+    bulbFilled: withIconClass(iconBulbFilled),
     list: withIconClass(iconList),
     tree: withIconClass(iconTree),
     stack: withIconClass(iconStack),
@@ -150,6 +158,7 @@ export class MimirExplorer {
         this.modelItems = [];
         this.currentAvIndex = 0;
         this.currentModelIndex = 0;
+        this.threeState = null;
         this.collectionCache = new Map();
         this.collectionItemsCache = new Map();
         this.annotationsByCanvasId = {};
@@ -173,6 +182,8 @@ export class MimirExplorer {
         this.currentCanvasIndex = 0;
         this.zoomUpdatePending = false;
         this.pendingZoomValue = null;
+        this.pendingContentState = null;
+        this.threeFilterOpen = false;
 
         // Apply theme color as CSS variable
         this.container.style.setProperty('--mimir-primary', this.options.primaryColor);
@@ -317,6 +328,35 @@ export class MimirExplorer {
                         </div>
                     </div>
 
+                    <!-- 3D FILTER BAR -->
+                    <div id="mimir-3d-filter-bar" class="mimir-filter-bar mimir-hidden">
+                        <div class="mimir-filter-top-row">
+                            <button id="mimir-3d-auto-rotate" class="mimir-chip">Auto rotate</button>
+                        </div>
+                        <div class="mimir-filter-column">
+                            <div class="mimir-filter-group">
+                                <button id="mimir-3d-light" class="mimir-icon-btn" title="Light Intensity">${ICONS.bulbFilled}</button>
+                                <input type="range" id="mimir-3d-light-slider" min="0" max="2" step="0.01" value="0.85" class="mimir-filter-slider">
+                            </div>
+                            <div class="mimir-filter-group">
+                                <button id="mimir-3d-ambient" class="mimir-icon-btn" title="Ambient Light">${ICONS.moon}</button>
+                                <input type="range" id="mimir-3d-ambient-slider" min="0" max="2" step="0.01" value="0.35" class="mimir-filter-slider">
+                            </div>
+                            <div class="mimir-filter-group">
+                                <button id="mimir-3d-exposure" class="mimir-icon-btn" title="Exposure">${ICONS.brightness}</button>
+                                <input type="range" id="mimir-3d-exposure-slider" min="0.5" max="2" step="0.01" value="1" class="mimir-filter-slider">
+                            </div>
+                            <div class="mimir-filter-group">
+                                <button id="mimir-3d-azimuth" class="mimir-icon-btn" title="Light Azimuth">${ICONS.skewX}</button>
+                                <input type="range" id="mimir-3d-azimuth-slider" min="0" max="360" step="1" value="45" class="mimir-filter-slider">
+                            </div>
+                            <div class="mimir-filter-group">
+                                <button id="mimir-3d-elevation" class="mimir-icon-btn" title="Light Elevation">${ICONS.skewY}</button>
+                                <input type="range" id="mimir-3d-elevation-slider" min="-30" max="80" step="1" value="35" class="mimir-filter-slider">
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- BOTTOM BAR (Unified) -->
                     <div id="mimir-bottom-bar" class="mimir-bottom-bar mimir-toolbar-hidden">
                             <div class="mimir-bottom-group">
@@ -336,6 +376,9 @@ export class MimirExplorer {
                                     <input type="range" id="mimir-zoom-slider" min="0.5" max="4" step="0.01" value="1">
                                 </div>
                             </div>
+                            <button id="mimir-3d-toggle" class="mimir-icon-btn" title="3D Controls">
+                                ${ICONS.model}
+                            </button>
                             <button id="mimir-filter-toggle" class="mimir-icon-btn" title="Filters">
                                 ${ICONS.filter}
                             </button>
@@ -460,6 +503,7 @@ export class MimirExplorer {
             loader: this.container.querySelector('#mimir-loader'),
             bottomBar: this.container.querySelector('#mimir-bottom-bar'),
             filterBar: this.container.querySelector('#mimir-filter-bar'),
+            threeFilterBar: this.container.querySelector('#mimir-3d-filter-bar'),
             colorMatrix: this.container.querySelector('#mimir-color-matrix'),
             topBar: this.container.querySelector('#mimir-top-bar'),
             title: this.container.querySelector('#mimir-title'),
@@ -501,6 +545,12 @@ export class MimirExplorer {
             iconVolume: this.container.querySelector('#mimir-icon-volume'),
             iconVolumeOff: this.container.querySelector('#mimir-icon-volume-off'),
             iconMute: this.container.querySelector('#mimir-icon-mute'),
+            threeAutoRotate: this.container.querySelector('#mimir-3d-auto-rotate'),
+            threeLightSlider: this.container.querySelector('#mimir-3d-light-slider'),
+            threeAmbientSlider: this.container.querySelector('#mimir-3d-ambient-slider'),
+            threeExposureSlider: this.container.querySelector('#mimir-3d-exposure-slider'),
+            threeAzimuthSlider: this.container.querySelector('#mimir-3d-azimuth-slider'),
+            threeElevationSlider: this.container.querySelector('#mimir-3d-elevation-slider'),
             btns: {
                 sidebarToggle: this.container.querySelector('#mimir-sidebar-toggle'),
                 infoToggle: this.container.querySelector('#mimir-info-toggle'),
@@ -526,6 +576,7 @@ export class MimirExplorer {
                 filterGreen: this.container.querySelector('#mimir-filter-green'),
                 filterBlue: this.container.querySelector('#mimir-filter-blue'),
                 zoom: this.container.querySelector('#mimir-zoom'),
+                threeToggle: this.container.querySelector('#mimir-3d-toggle'),
                 continuousToggle: this.container.querySelector('#mimir-continuous-toggle'),
                 bookmarkAdd: this.container.querySelector('#mimir-bookmark-add'),
                 prev: this.container.querySelector('#mimir-prev'),
@@ -1395,7 +1446,7 @@ export class MimirExplorer {
                 background-color: rgba(120,120,120,0.7);
             }
 
-            model-viewer { width: 100%; height: 100%; background-color: transparent; }
+            .mimir-three-canvas { width: 100%; height: 100%; display: block; }
             #mimir-osd { transform-origin: center; }
             video, audio { border-radius: 1rem; background: #1a1a1a; box-shadow: 0 25px 50px -12px rgba(17,17,17,0.5); }
             .mimir-av-wrapper { position: relative; width: 100%; height: 100%; display: grid; place-items: center; }
@@ -1785,6 +1836,18 @@ export class MimirExplorer {
             if (this.els.zoomSlider) this.els.zoomSlider.value = 1;
             if (this.osdExplorer) this.osdExplorer.viewport.goHome();
             if (this.avPlayer) this.avPlayer.currentTime = 0;
+            if (this.threeState?.camera && this.threeState?.controls) {
+                const { camera, controls, baseTarget, baseDir, baseDistance } = this.threeState;
+                if (baseTarget && baseDir && Number.isFinite(baseDistance)) {
+                    controls.target.copy(baseTarget);
+                    const pos = baseTarget.clone().add(baseDir.clone().multiplyScalar(baseDistance));
+                    camera.position.copy(pos);
+                    camera.lookAt(baseTarget);
+                    camera.updateProjectionMatrix();
+                }
+            }
+            if (this.els.threeAutoRotate) this.els.threeAutoRotate.classList.remove('is-active');
+            if (this.threeState?.controls) this.threeState.controls.autoRotate = false;
         };
         this.updateNavHandlers = () => {
             if (this.isBookMode) {
@@ -1889,6 +1952,53 @@ export class MimirExplorer {
         };
 
         this.els.btns.filterToggle.onclick = () => this.setFilterOpen(!this.filterOpen);
+        if (this.els.btns.threeToggle) {
+            this.els.btns.threeToggle.onclick = () => this.setThreeFilterOpen(!this.threeFilterOpen);
+        }
+        if (this.els.threeAutoRotate) {
+            this.els.threeAutoRotate.onclick = () => {
+                const enabled = !this.els.threeAutoRotate.classList.contains('is-active');
+                this.els.threeAutoRotate.classList.toggle('is-active', enabled);
+                if (this.threeState?.controls) this.threeState.controls.autoRotate = enabled;
+            };
+        }
+        const updateLightDir = () => {
+            if (!this.threeState?.lights?.dir) return;
+            const az = Number(this.els.threeAzimuthSlider?.value ?? 45) * (Math.PI / 180);
+            const el = Number(this.els.threeElevationSlider?.value ?? 35) * (Math.PI / 180);
+            const radius = 5;
+            const x = radius * Math.cos(el) * Math.cos(az);
+            const y = radius * Math.sin(el);
+            const z = radius * Math.cos(el) * Math.sin(az);
+            this.threeState.lights.dir.position.set(x, y, z);
+        };
+        if (this.els.threeLightSlider) {
+            this.els.threeLightSlider.oninput = () => {
+                if (this.threeState?.lights?.dir) {
+                    this.threeState.lights.dir.intensity = Number(this.els.threeLightSlider.value);
+                }
+            };
+        }
+        if (this.els.threeAmbientSlider) {
+            this.els.threeAmbientSlider.oninput = () => {
+                if (this.threeState?.lights?.ambient) {
+                    this.threeState.lights.ambient.intensity = Number(this.els.threeAmbientSlider.value);
+                }
+            };
+        }
+        if (this.els.threeExposureSlider) {
+            this.els.threeExposureSlider.oninput = () => {
+                if (this.threeState?.renderer) {
+                    this.threeState.renderer.toneMappingExposure = Number(this.els.threeExposureSlider.value);
+                }
+            };
+        }
+        if (this.els.threeAzimuthSlider) {
+            this.els.threeAzimuthSlider.oninput = updateLightDir;
+        }
+        if (this.els.threeElevationSlider) {
+            this.els.threeElevationSlider.oninput = updateLightDir;
+        }
         this.els.btns.rotateCcw.onclick = () => { this.filterState.rotate = (this.filterState.rotate - 90 + 360) % 360; this.applyTransforms(); };
         this.els.btns.rotateCw.onclick = () => { this.filterState.rotate = (this.filterState.rotate + 90) % 360; this.applyTransforms(); };
         this.els.btns.flipH.onclick = () => { this.filterState.flipH = !this.filterState.flipH; this.applyTransforms(); };
@@ -1970,6 +2080,15 @@ export class MimirExplorer {
         this.filterOpen = open;
         if (this.els.filterBar) this.els.filterBar.classList.toggle('mimir-hidden', !open);
         if (this.els.btns.filterToggle) this.els.btns.filterToggle.classList.toggle('mimir-filter-active', open);
+        if (open && this.threeFilterOpen) this.setThreeFilterOpen(false);
+        this.updateBottomBarOffset();
+    }
+
+    setThreeFilterOpen(open) {
+        this.threeFilterOpen = open;
+        if (this.els.threeFilterBar) this.els.threeFilterBar.classList.toggle('mimir-hidden', !open);
+        if (this.els.btns.threeToggle) this.els.btns.threeToggle.classList.toggle('mimir-filter-active', open);
+        if (open && this.filterOpen) this.setFilterOpen(false);
         this.updateBottomBarOffset();
     }
 
@@ -2215,19 +2334,74 @@ export class MimirExplorer {
             const response = await fetch(url);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const manifest = await response.json();
+            const contentState = this.resolveContentState(manifest);
+            if (contentState?.manifestUrl && contentState.manifestUrl !== url) {
+                this.pendingContentState = contentState.target || null;
+                await this.loadManifest(contentState.manifestUrl);
+                return;
+            }
             this.currentManifest = manifest;
             this.currentAvIndex = 0;
             this.currentModelIndex = 0;
             this.currentParsed = this.parseManifest(manifest);
+            if (this.currentParsed?.type === '3d' && (this.currentParsed.modelItems?.length || 0) > 1) {
+                this.currentModelIndex = -1;
+            }
             this.fulltextSourcesByCanvasId = this.currentParsed.fulltextSourcesByCanvasId || {};
             this.fulltextPageRefs = this.currentParsed.fulltextPageRefs || [];
             this.render(this.currentParsed.type, manifest, this.currentParsed);
             this.fetchAnnotationPages(this.currentParsed.annotationPageRefs || []);
             this.fetchFulltextPages(this.fulltextPageRefs || []);
+            this.applyContentStateTarget(this.currentParsed);
         } catch (error) {
             console.error('Mimir: Error loading manifest', error);
             this.showMessage(`Error: ${error.message}`);
         } finally { this.showLoader(false); }
+    }
+
+    resolveContentState(data) {
+        if (!data || typeof data !== 'object') return null;
+        const getId = (obj) => (obj && (obj.id || obj['@id'])) || null;
+        const asArray = (val) => (Array.isArray(val) ? val : (val ? [val] : []));
+        const type = String(data.type || data['@type'] || '').toLowerCase();
+        const motivations = asArray(data.motivation).map(m => String(m || '').toLowerCase());
+        const isContentState = type.includes('annotation') && motivations.some(m => m.includes('contentstate'));
+        if (!isContentState) return null;
+        const target = data.target || data.on;
+        if (typeof target === 'string') return { manifestUrl: target, target };
+        if (target && typeof target === 'object') {
+            const tType = String(target.type || target['@type'] || '').toLowerCase();
+            const targetId = getId(target);
+            const partOf = asArray(target.partOf || target.within).map(getId).find(Boolean);
+            if (tType.includes('manifest') && targetId) return { manifestUrl: targetId, target };
+            if (partOf) return { manifestUrl: partOf, target };
+            if (targetId && targetId.includes('/manifest')) return { manifestUrl: targetId, target };
+        }
+        return null;
+    }
+
+    applyContentStateTarget(parsed) {
+        if (!this.pendingContentState || !parsed) return;
+        const target = this.pendingContentState;
+        const getId = (obj) => (obj && (obj.id || obj['@id'])) || null;
+        let canvasId = null;
+        if (typeof target === 'string') {
+            if (target.includes('/canvas/')) canvasId = target;
+        } else if (target && typeof target === 'object') {
+            const tType = String(target.type || target['@type'] || '').toLowerCase();
+            const targetId = getId(target);
+            if (tType.includes('canvas') && targetId) canvasId = targetId;
+            const source = target.source || target.item;
+            const sourceId = getId(source);
+            if (!canvasId && sourceId) canvasId = sourceId;
+            if (!canvasId && typeof targetId === 'string' && targetId.includes('/canvas/')) canvasId = targetId;
+        }
+        if (canvasId && parsed?.canvasIndexById?.[canvasId] !== undefined) {
+            const idx = parsed.canvasIndexById[canvasId];
+            if (this.osdExplorer) this.osdExplorer.goToPage(idx);
+            else this.pendingBookmarkPage = idx;
+        }
+        this.pendingContentState = null;
     }
 
     async fetchAnnotationPages(refs) {
@@ -2441,6 +2615,23 @@ export class MimirExplorer {
         return annotations;
     }
 
+    extractPointSelector(target) {
+        if (!target) return null;
+        const collect = (sel, bucket) => {
+            if (!sel) return;
+            if (Array.isArray(sel)) sel.forEach(s => collect(s, bucket));
+            else if (sel.selector) collect(sel.selector, bucket);
+            else bucket.push(sel);
+        };
+        const selectors = [];
+        collect(target.selector || target, selectors);
+        const point = selectors.find(s => String(s.type || s['@type']).toLowerCase().includes('pointselector'));
+        if (!point) return null;
+        const x = Number(point.x), y = Number(point.y), z = Number(point.z);
+        if (![x, y, z].every(n => Number.isFinite(n))) return null;
+        return { x, y, z };
+    }
+
     detectType(manifest, parsed) {
         const mType = (manifest.type || manifest['@type'] || '').toLowerCase();
         if (mType.includes('collection')) return 'collection';
@@ -2474,9 +2665,11 @@ export class MimirExplorer {
         this.els.avAudio.classList.toggle('mimir-hidden', type !== 'av');
         this.els.imageControls.classList.toggle('mimir-hidden', type !== 'image');
         
-        this.els.btns.zoom.classList.toggle('mimir-hidden', type !== 'image' && type !== 'av');
+        this.els.btns.zoom.classList.toggle('mimir-hidden', type !== 'image' && type !== 'av' && type !== '3d');
         this.els.btns.filterToggle.classList.toggle('mimir-hidden', type !== 'image' && type !== 'av');
         if (type !== 'image' && type !== 'av') this.setFilterOpen(false);
+        if (this.els.btns.threeToggle) this.els.btns.threeToggle.classList.toggle('mimir-hidden', type !== '3d');
+        if (type !== '3d') this.setThreeFilterOpen(false);
         if (type === 'image' && !this.layoutModeLocked) {
             if (parsed?.behavior?.includes('continuous')) {
                 this.isContinuousMode = true;
@@ -2498,6 +2691,8 @@ export class MimirExplorer {
         this.els.btns.topFullscreen.classList.remove('mimir-hidden');
         this.els.btns.darkToggle.classList.add('mimir-hidden');
         this.els.btns.fullscreen.classList.add('mimir-hidden');
+        if (this.els.threeFilterBar) this.els.threeFilterBar.classList.add('mimir-hidden');
+        this.threeFilterOpen = false;
 
         switch (type) {
             case 'collection': this.renderCollection(manifest, parsed); break;
@@ -3338,6 +3533,16 @@ export class MimirExplorer {
             const homeZoom = viewport.getHomeZoom ? viewport.getHomeZoom() : 1;
             viewport.zoomTo(homeZoom * value);
         }
+        if (this.threeState && !this.els.threeD.classList.contains('mimir-hidden')) {
+            const { camera, controls, baseTarget, baseDir, baseDistance } = this.threeState;
+            if (camera && controls && baseTarget && baseDir && Number.isFinite(baseDistance)) {
+                const dist = baseDistance / Math.max(0.01, value);
+                camera.position.copy(baseTarget.clone().add(baseDir.clone().multiplyScalar(dist)));
+                camera.lookAt(baseTarget);
+                camera.updateProjectionMatrix();
+                controls.update();
+            }
+        }
         this.applyTransforms();
     }
 
@@ -3681,6 +3886,7 @@ export class MimirExplorer {
             itemsHtml += `<div class="mimir-card">
                 <p class="mimir-meta-title">Models</p>
                 <div class="mimir-list">`;
+            itemsHtml += `<button data-mimir-model="-1" class="mimir-list-btn">All models</button>`;
             parsed.modelItems.forEach((item, idx) => {
                 const label = item.label || `Model ${idx + 1}`;
                 itemsHtml += `<button data-mimir-model="${idx}" class="mimir-list-btn">${label}</button>`;
@@ -3916,11 +4122,131 @@ export class MimirExplorer {
         this.els.btns.zoom.classList.add('mimir-hidden'); this.els.btns.bookToggle.classList.add('mimir-hidden');
         this.els.btns.filterToggle.classList.add('mimir-hidden');
         this.setFilterOpen(false);
+        this.destroyThree();
         this.modelItems = parsed?.modelItems || [];
-        if (this.modelItems.length === 0) { this.showMessage("No 3D models found."); return; }
-        const current = this.modelItems[this.currentModelIndex] || this.modelItems[0];
-        const modelUrl = current?.id || current?.url;
-        if (modelUrl) { this.els.threeD.innerHTML = `<model-viewer src="${modelUrl}" camera-controls auto-rotate class="w-full h-full"></model-viewer>`; }
+        const cameraItems = parsed?.cameraItems || [];
+        if (this.modelItems.length === 0 && cameraItems.length === 0) { this.showMessage("No 3D content found."); return; }
+        const modelsToLoad = (this.currentModelIndex >= 0 && this.modelItems[this.currentModelIndex])
+            ? [this.modelItems[this.currentModelIndex]]
+            : this.modelItems;
+        this.els.threeD.innerHTML = `<canvas class="mimir-three-canvas"></canvas>`;
+        const canvas = this.els.threeD.querySelector('canvas');
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+        renderer.setPixelRatio(window.devicePixelRatio || 1);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        const scene = new THREE.Scene();
+        const camInfo = cameraItems[0] || null;
+        const fov = Number(camInfo?.fieldOfView ?? camInfo?.fov ?? 50);
+        const near = Number(camInfo?.near ?? 0.1);
+        const far = Number(camInfo?.far ?? 2000);
+        const camera = new THREE.PerspectiveCamera(fov, 1, near, far);
+        camera.position.set(0, 0, 2.5);
+        camera.lookAt(0, 0, 0);
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+        controls.target.set(0, 0, 0);
+        const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.75);
+        const ambient = new THREE.AmbientLight(0xffffff, 0.35);
+        const dir = new THREE.DirectionalLight(0xffffff, 0.85);
+        dir.position.set(2, 4, 3);
+        scene.add(hemi, ambient, dir);
+        if (this.els.threeLightSlider) this.els.threeLightSlider.value = String(dir.intensity);
+        if (this.els.threeAmbientSlider) this.els.threeAmbientSlider.value = String(ambient.intensity);
+        if (this.els.threeExposureSlider) this.els.threeExposureSlider.value = String(renderer.toneMappingExposure);
+        if (this.els.threeAzimuthSlider) this.els.threeAzimuthSlider.value = '45';
+        if (this.els.threeElevationSlider) this.els.threeElevationSlider.value = '35';
+        if (this.els.threeAutoRotate) this.els.threeAutoRotate.classList.remove('is-active');
+        const loader = new GLTFLoader();
+        let loadedCount = 0;
+        const totalToLoad = modelsToLoad.length;
+        const loadedScenes = [];
+        const setBaseView = () => {
+            const baseTarget = controls.target.clone();
+            let baseDir = camera.position.clone().sub(baseTarget);
+            if (baseDir.lengthSq() === 0) baseDir = new THREE.Vector3(0, 0, 1);
+            baseDir.normalize();
+            const baseDistance = camera.position.distanceTo(baseTarget) || 1;
+            this.threeState.baseTarget = baseTarget;
+            this.threeState.baseDir = baseDir;
+            this.threeState.baseDistance = baseDistance;
+        };
+        const fitToModels = () => {
+            if (!loadedScenes.length) return;
+            const box = new THREE.Box3();
+            loadedScenes.forEach(obj => box.expandByObject(obj));
+            if (box.isEmpty()) return;
+            const size = box.getSize(new THREE.Vector3());
+            const center = box.getCenter(new THREE.Vector3());
+            controls.target.copy(center);
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const dist = maxDim === 0 ? 2.5 : maxDim * 1.4;
+            camera.position.set(center.x, center.y, center.z + dist);
+            camera.lookAt(center);
+            camera.updateProjectionMatrix();
+            setBaseView();
+        };
+        const updateLightDir = () => {
+            const az = Number(this.els.threeAzimuthSlider?.value ?? 45) * (Math.PI / 180);
+            const el = Number(this.els.threeElevationSlider?.value ?? 35) * (Math.PI / 180);
+            const radius = 5;
+            const x = radius * Math.cos(el) * Math.cos(az);
+            const y = radius * Math.sin(el);
+            const z = radius * Math.cos(el) * Math.sin(az);
+            dir.position.set(x, y, z);
+        };
+        updateLightDir();
+
+        if (modelsToLoad.length) {
+            modelsToLoad.forEach((item) => {
+                const modelUrl = item?.id || item?.url;
+                if (!modelUrl) return;
+                loader.load(modelUrl, (gltf) => {
+                    if (item?.position) {
+                        gltf.scene.position.set(
+                            Number(item.position.x) || 0,
+                            Number(item.position.y) || 0,
+                            Number(item.position.z) || 0
+                        );
+                    }
+                    scene.add(gltf.scene);
+                    loadedScenes.push(gltf.scene);
+                    loadedCount += 1;
+                    if (loadedCount >= totalToLoad) fitToModels();
+                }, undefined, (err) => {
+                    console.error('Mimir: Failed to load 3D model', err);
+                    loadedCount += 1;
+                    if (loadedCount >= totalToLoad) fitToModels();
+                });
+            });
+        } else {
+            setBaseView();
+        }
+        const resize = () => {
+            const rect = this.els.threeD.getBoundingClientRect();
+            const width = Math.max(1, rect.width);
+            const height = Math.max(1, rect.height);
+            renderer.setSize(width, height, false);
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+        };
+        const ro = new ResizeObserver(resize);
+        ro.observe(this.els.threeD);
+        resize();
+        const animate = () => {
+            this.threeState.rafId = requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        };
+        this.threeState = { renderer, scene, camera, controls, resizeObserver: ro, rafId: 0, baseTarget: null, baseDir: null, baseDistance: 1, lights: { dir, ambient, hemi } };
+        if (camInfo) {
+            controls.target.set(0, 0, 0);
+            camera.lookAt(controls.target);
+            setBaseView();
+        }
+        animate();
     }
 
     renderCollection(manifest, parsed) {
@@ -3958,7 +4284,7 @@ export class MimirExplorer {
         container.querySelectorAll('[data-mimir-model]').forEach(btn => {
             btn.onclick = () => {
                 const idx = Number(btn.getAttribute('data-mimir-model'));
-                this.currentModelIndex = idx;
+                this.currentModelIndex = Number.isInteger(idx) ? idx : 0;
                 this.render3D(this.currentManifest, this.currentParsed);
             };
         });
@@ -4153,11 +4479,19 @@ export class MimirExplorer {
             const imageSources = [];
             const avItems = [];
             const modelItems = [];
+            const cameraItems = [];
             bodies.forEach(b => {
                 if (!b) return;
                 const type = getType(b);
                 const id = getId(b);
                 const format = b.format || '';
+                if (type === 'SpecificResource' && b.source) {
+                    const nested = parseBody(b.source);
+                    imageSources.push(...nested.imageSources);
+                    avItems.push(...nested.avItems);
+                    modelItems.push(...nested.modelItems);
+                    cameraItems.push(...nested.cameraItems);
+                }
                 const serviceId = extractImageServiceId(b.service || b.services);
                 if (serviceId) imageSources.push(serviceId);
                 else if (format.startsWith('image/') && id) imageSources.push({ type: 'image', url: id });
@@ -4170,25 +4504,54 @@ export class MimirExplorer {
                 if ((type === 'Model' || format.includes('gltf') || (typeof id === 'string' && (id.endsWith('.glb') || id.endsWith('.gltf')))) && id) {
                     modelItems.push({ id, label: getLabel(b.label) });
                 }
+                if (type === 'PerspectiveCamera' && id) {
+                    cameraItems.push({
+                        id,
+                        label: getLabel(b.label),
+                        fieldOfView: b.fieldOfView ?? b.fov,
+                        near: b.near,
+                        far: b.far
+                    });
+                }
             });
-            return { imageSources, avItems, modelItems };
+            return { imageSources, avItems, modelItems, cameraItems };
         };
         const parseCanvas = (canvas, annotationPageRefs, fulltextPageRefs, fulltextSourcesByCanvasId) => {
             const imageSources = [];
             const avItems = [];
             const modelItems = [];
-            const items = asArray(canvas.items);
-            items.forEach(page => {
-                const annos = asArray(page.items);
-                annos.forEach(anno => {
-                    const motivation = anno.motivation || '';
-                    if (!motivation || motivation === 'painting') {
-                        const parsed = parseBody(anno.body || anno.resource);
-                        imageSources.push(...parsed.imageSources);
-                        avItems.push(...parsed.avItems);
-                        modelItems.push(...parsed.modelItems);
+            const cameraItems = [];
+            const collectAnnos = (container) => {
+                const list = [];
+                asArray(container).forEach(entry => {
+                    if (!entry) return;
+                    const type = String(getType(entry)).toLowerCase();
+                    if (type.includes('annotationpage') || entry.items) {
+                        list.push(...asArray(entry.items));
+                    } else if (type.includes('annotation') || entry.body || entry.resource) {
+                        list.push(entry);
                     }
                 });
+                return list;
+            };
+            const annos = [
+                ...collectAnnos(canvas.items),
+                ...collectAnnos(canvas.annotations),
+                ...collectAnnos(canvas.otherContent)
+            ];
+            annos.forEach(anno => {
+                if (!anno) return;
+                const motivation = anno.motivation || '';
+                const motivations = Array.isArray(motivation) ? motivation.map(m => String(m).toLowerCase()) : [String(motivation).toLowerCase()];
+                if (!motivation || motivations.some(m => m.includes('painting'))) {
+                    const parsed = parseBody(anno.body || anno.resource);
+                    const point = this.extractPointSelector(anno.target || anno.on);
+                    imageSources.push(...parsed.imageSources);
+                    avItems.push(...parsed.avItems);
+                    const models = point ? parsed.modelItems.map(m => ({ ...m, position: point })) : parsed.modelItems;
+                    modelItems.push(...models);
+                    cameraItems.push(...parsed.cameraItems);
+                }
             });
             const images = asArray(canvas.images);
             images.forEach(img => {
@@ -4233,6 +4596,7 @@ export class MimirExplorer {
                 imageSources,
                 avItems,
                 modelItems,
+                cameraItems,
                 thumbnail,
                 annotations
             };
@@ -4282,6 +4646,7 @@ export class MimirExplorer {
         const imageSources = [];
         const avItems = [];
         const modelItems = [];
+        const cameraItems = [];
         const annotationsByCanvasId = {};
         const annotationPageRefs = [];
         const fulltextPageRefs = [];
@@ -4297,6 +4662,7 @@ export class MimirExplorer {
                 imageSources.push(...parsed.imageSources);
                 avItems.push(...parsed.avItems);
                 modelItems.push(...parsed.modelItems);
+                cameraItems.push(...parsed.cameraItems);
                 parsed.annotations?.forEach((anno) => {
                     const key = anno.canvasId || parsed.id;
                     if (!key) return;
@@ -4316,6 +4682,7 @@ export class MimirExplorer {
                 imageSources.push(...parsed.imageSources);
                 avItems.push(...parsed.avItems);
                 modelItems.push(...parsed.modelItems);
+                cameraItems.push(...parsed.cameraItems);
                 parsed.annotations?.forEach((anno) => {
                     const key = anno.canvasId || parsed.id;
                     if (!key) return;
@@ -4406,6 +4773,7 @@ export class MimirExplorer {
             imageSources: dedupe(imageSources),
             avItems: dedupe(avItems),
             modelItems: dedupe(modelItems),
+            cameraItems: dedupe(cameraItems),
             ranges,
             rangesFlat,
             items,
@@ -4424,6 +4792,7 @@ export class MimirExplorer {
     resetExplorers() {
         this.els.osd.classList.add('mimir-hidden'); this.els.av.classList.add('mimir-hidden'); this.els.threeD.classList.add('mimir-hidden'); this.els.message.classList.add('mimir-hidden'); this.els.topBar.style.opacity = '0'; this.showToolbar(false);
         this.els.av.innerHTML = ''; this.els.threeD.innerHTML = ''; this.avPlayer = null;
+        this.destroyThree();
         if (this.osdExplorer) { this.osdExplorer.destroy(); this.osdExplorer = null; }
         this.avItems = []; this.modelItems = []; this.currentAvIndex = 0; this.currentModelIndex = 0;
         this.currentParsed = null;
@@ -4443,11 +4812,25 @@ export class MimirExplorer {
         if (this.els.zoomPop) this.els.zoomPop.classList.add('mimir-hidden');
         if (this.els.zoomSlider) this.els.zoomSlider.value = 1;
         if (this.els.filterBar) this.els.filterBar.classList.add('mimir-hidden');
+        if (this.els.threeFilterBar) this.els.threeFilterBar.classList.add('mimir-hidden');
         if (this.els.btns.filterToggle) this.els.btns.filterToggle.classList.remove('mimir-filter-active');
         this.filterOpen = false;
+        this.threeFilterOpen = false;
         this.resetFilters();
         this.setLeftOpen(false);
         this.setRightOpen(false);
+    }
+
+    destroyThree() {
+        if (!this.threeState) return;
+        if (this.threeState.rafId) cancelAnimationFrame(this.threeState.rafId);
+        if (this.threeState.controls) this.threeState.controls.dispose();
+        if (this.threeState.renderer) {
+            this.threeState.renderer.dispose();
+            if (this.threeState.renderer.forceContextLoss) this.threeState.renderer.forceContextLoss();
+        }
+        if (this.threeState.resizeObserver) this.threeState.resizeObserver.disconnect();
+        this.threeState = null;
     }
 
     showToolbar(show) {
