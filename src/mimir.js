@@ -151,6 +151,7 @@ export class MimirExplorer {
         this.currentAvIndex = 0;
         this.currentModelIndex = 0;
         this.collectionCache = new Map();
+        this.collectionItemsCache = new Map();
         this.annotationsByCanvasId = {};
         this.annotationMode = 'single'; // single | all
         this.selectedAnnotationId = null;
@@ -169,6 +170,8 @@ export class MimirExplorer {
         this.layoutModeLocked = false;
         this.overlayUpdatePending = false;
         this.currentCanvasIndex = 0;
+        this.zoomUpdatePending = false;
+        this.pendingZoomValue = null;
 
         // Apply theme color as CSS variable
         this.container.style.setProperty('--mimir-primary', this.options.primaryColor);
@@ -379,7 +382,7 @@ export class MimirExplorer {
                         </div>
                         <div class="mimir-bottom-group">
                             <div id="mimir-av-audio" class="flex items-center gap-2 mimir-hidden">
-                                <div class="mimir-volume">
+                                <div class="mimir-volume-wrap">
                                     <button id="mimir-volume-toggle" class="mimir-icon-btn" title="Volume">
                                         <span id="mimir-icon-volume">${ICONS.volume}</span>
                                         <span id="mimir-icon-volume-off" class="mimir-hidden">${ICONS.mute}</span>
@@ -900,6 +903,13 @@ export class MimirExplorer {
                 letter-spacing: 0.08em;
                 color: #6b7280;
                 margin-bottom: 0.1rem;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                max-width: 100%;
+            }
+            #mimir-root.mimir-dark .mimir-bookmarks-title {
+                color: rgba(148,163,184,0.9);
             }
             .mimir-bookmark-item {
                 display: grid;
@@ -917,6 +927,16 @@ export class MimirExplorer {
                 border-color: rgba(var(--mimir-primary-rgb), 0.35);
                 background: rgba(var(--mimir-primary-rgb), 0.08);
                 color: var(--mimir-primary);
+            }
+            #mimir-root.mimir-dark .mimir-bookmark-item {
+                border-color: rgba(255,255,255,0.08);
+                background: rgba(255,255,255,0.04);
+                color: #f8fafc;
+            }
+            #mimir-root.mimir-dark .mimir-bookmark-item:hover {
+                border-color: rgba(var(--mimir-primary-rgb), 0.45);
+                background: rgba(var(--mimir-primary-rgb), 0.18);
+                color: #f8fafc;
             }
             .mimir-bookmark-label {
                 background: transparent;
@@ -1386,26 +1406,34 @@ export class MimirExplorer {
                 bottom: 120%;
                 left: 50%;
                 transform: translateX(-50%);
-                padding: 0.5rem 0.6rem;
+                padding: 0;
+                width: 2.6rem;
+                height: 9rem;
                 border-radius: 0.75rem;
                 background: rgba(255,255,255,0.95);
                 border: 1px solid rgba(17,17,17,0.12);
-                display: grid; place-items: center;
+                display: flex; align-items: center; justify-content: center;
                 backdrop-filter: blur(10px);
                 z-index: 10;
                 pointer-events: auto;
+                overflow: hidden;
             }
             .mimir-zoom-pop input[type="range"] {
-                width: 6px; height: 120px;
-                writing-mode: bt-lr;
-                -webkit-appearance: slider-vertical;
-                background: transparent;
+                width: 8.1rem; height: 6px;
+                transform: rotate(-90deg);
+                transform-origin: center;
+                -webkit-appearance: none;
+                appearance: none;
+                background: rgba(17,17,17,0.18);
+                border-radius: 999px;
                 outline: none;
                 cursor: pointer;
                 pointer-events: auto;
+                position: relative;
+                z-index: 1;
             }
             .mimir-zoom-pop input[type="range"]::-webkit-slider-runnable-track {
-                background: rgba(17,17,17,0.18); width: 6px; border-radius: 999px;
+                background: transparent; width: 6px; border-radius: 999px;
             }
             .mimir-zoom-pop input[type="range"]::-webkit-slider-thumb {
                 -webkit-appearance: none; appearance: none;
@@ -1414,33 +1442,46 @@ export class MimirExplorer {
                 margin-left: -4px;
             }
             .mimir-zoom-pop input[type="range"]::-moz-range-track {
-                background: rgba(17,17,17,0.18); width: 6px; border-radius: 999px;
+                background: transparent; width: 6px; border-radius: 999px;
             }
             .mimir-zoom-pop input[type="range"]::-moz-range-thumb {
                 background: #f8fafc; height: 14px; width: 14px; border-radius: 50%;
                 border: 2px solid rgba(17,17,17,0.5);
             }
             .mimir-volume { position: relative; }
+            .mimir-volume-wrap { position: relative; display: grid; place-items: center; }
             .mimir-volume-pop {
                 position: absolute;
                 bottom: 120%;
                 left: 50%;
                 transform: translateX(-50%);
-                padding: 0.5rem 0.6rem;
+                padding: 0;
+                width: 2.6rem;
+                height: 9rem;
                 border-radius: 0.75rem;
-                background: rgba(17,17,17,0.9);
-                border: 1px solid rgba(255,255,255,0.15);
-                display: grid; place-items: center;
+                background: rgba(255,255,255,0.95);
+                border: 1px solid rgba(17,17,17,0.12);
+                display: flex; align-items: center; justify-content: center;
                 backdrop-filter: blur(10px);
+                z-index: 10;
+                overflow: hidden;
             }
             .mimir-volume-pop input[type="range"] {
-                width: 6px; height: 120px;
-                writing-mode: bt-lr;
-                -webkit-appearance: slider-vertical;
-                background: transparent;
+                width: 8.1rem; height: 6px;
+                transform: rotate(-90deg);
+                transform-origin: center;
+                -webkit-appearance: none;
+                appearance: none;
+                background: rgba(17,17,17,0.18);
+                border-radius: 999px;
+                outline: none;
+                cursor: pointer;
+                pointer-events: auto;
+                position: relative;
+                z-index: 1;
             }
             .mimir-volume-pop input[type="range"]::-webkit-slider-runnable-track {
-                background: rgba(255,255,255,0.2); width: 6px; border-radius: 999px;
+                background: transparent; width: 6px; border-radius: 999px;
             }
             .mimir-volume-pop input[type="range"]::-webkit-slider-thumb {
                 -webkit-appearance: none; appearance: none;
@@ -1449,7 +1490,7 @@ export class MimirExplorer {
                 margin-left: -4px;
             }
             .mimir-volume-pop input[type="range"]::-moz-range-track {
-                background: rgba(255,255,255,0.2); width: 6px; border-radius: 999px;
+                background: transparent; width: 6px; border-radius: 999px;
             }
             .mimir-volume-pop input[type="range"]::-moz-range-thumb {
                 background: #f8fafc; height: 14px; width: 14px; border-radius: 50%;
@@ -1459,14 +1500,20 @@ export class MimirExplorer {
                 background: rgba(17,17,17,0.95);
                 border-color: rgba(148,163,184,0.3);
             }
+            #mimir-root.mimir-dark .mimir-volume-pop input[type="range"] {
+                background: rgba(255,255,255,0.2);
+            }
             #mimir-root.mimir-dark .mimir-zoom-pop {
                 background: rgba(17,17,17,0.95);
                 border-color: rgba(148,163,184,0.3);
             }
             #mimir-root.mimir-dark .mimir-zoom-pop input[type="range"]::-webkit-slider-runnable-track {
-                background: rgba(255,255,255,0.2);
+                background: transparent;
             }
             #mimir-root.mimir-dark .mimir-zoom-pop input[type="range"]::-moz-range-track {
+                background: transparent;
+            }
+            #mimir-root.mimir-dark .mimir-zoom-pop input[type="range"] {
                 background: rgba(255,255,255,0.2);
             }
 
@@ -1624,6 +1671,32 @@ export class MimirExplorer {
                 border-color: rgba(var(--mimir-primary-rgb), 0.35);
                 color: #e5e7eb;
             }
+            #mimir-root.mimir-dark .mimir-outline-row {
+                border-color: rgba(255,255,255,0.1);
+                background: rgba(255,255,255,0.04);
+            }
+            #mimir-root.mimir-dark .mimir-outline-label {
+                color: #e5e7eb;
+            }
+            #mimir-root.mimir-dark .mimir-outline-toggle,
+            #mimir-root.mimir-dark .mimir-outline-leaf {
+                color: #e5e7eb;
+            }
+            #mimir-root.mimir-dark .mimir-outline-leaf::before {
+                background: rgba(255,255,255,0.5);
+                box-shadow: 0 0 0 4px rgba(255,255,255,0.08);
+            }
+            #mimir-root.mimir-dark .mimir-outline-children {
+                border-left-color: rgba(255,255,255,0.2);
+            }
+            #mimir-root.mimir-dark .mimir-outline-node.mimir-outline-active > .mimir-outline-row {
+                background: rgba(var(--mimir-primary-rgb), 0.2);
+                border-color: rgba(var(--mimir-primary-rgb), 0.45);
+            }
+            #mimir-root.mimir-dark .mimir-outline-row:hover {
+                border-color: rgba(var(--mimir-primary-rgb), 0.45);
+                background: rgba(var(--mimir-primary-rgb), 0.12);
+            }
             #mimir-root.mimir-dark .mimir-title,
             #mimir-root.mimir-dark .mimir-icon-btn,
             #mimir-root.mimir-dark .mimir-empty-title { color: #e5e7eb; }
@@ -1693,12 +1766,14 @@ export class MimirExplorer {
         this.els.zoomSlider.oninput = () => {
             const value = Number(this.els.zoomSlider.value);
             this.zoomValue = value;
-            if (this.osdExplorer && !this.els.osd.classList.contains('mimir-hidden')) {
-                const viewport = this.osdExplorer.viewport;
-                const homeZoom = viewport.getHomeZoom ? viewport.getHomeZoom() : 1;
-                viewport.zoomTo(homeZoom * value);
-            }
-            this.applyTransforms();
+            this.pendingZoomValue = value;
+            this.scheduleZoomUpdate();
+        };
+        this.els.zoomSlider.onchange = () => {
+            const value = Number(this.els.zoomSlider.value);
+            this.zoomValue = value;
+            this.pendingZoomValue = value;
+            this.applyZoom();
         };
         this.els.btns.home.onclick = () => {
             this.resetFilters();
@@ -2436,7 +2511,8 @@ export class MimirExplorer {
         if (this.els.annotationsLayer) this.els.annotationsLayer.classList.remove('mimir-hidden');
         this.tileSources = parsed?.imageSources?.length ? parsed.imageSources : [];
         if (this.els.btns.continuousToggle) {
-            this.els.btns.continuousToggle.classList.toggle('mimir-hidden', this.tileSources.length <= 1);
+            const allowContinuous = !!(parsed?.behavior?.includes('continuous')) && this.tileSources.length > 1;
+            this.els.btns.continuousToggle.classList.toggle('mimir-hidden', !allowContinuous);
             this.els.btns.continuousToggle.style.color = this.isContinuousMode ? 'var(--mimir-primary)' : '';
             this.els.btns.continuousToggle.innerHTML = this.isContinuousMode ? ICONS.arrowAutofitFilled : ICONS.arrowAutofit;
         }
@@ -3239,6 +3315,25 @@ export class MimirExplorer {
         });
     }
 
+    scheduleZoomUpdate() {
+        if (this.zoomUpdatePending) return;
+        this.zoomUpdatePending = true;
+        requestAnimationFrame(() => {
+            this.applyZoom();
+            this.zoomUpdatePending = false;
+        });
+    }
+
+    applyZoom() {
+        const value = Number(this.pendingZoomValue ?? this.zoomValue ?? 1);
+        if (this.osdExplorer && !this.els.osd.classList.contains('mimir-hidden')) {
+            const viewport = this.osdExplorer.viewport;
+            const homeZoom = viewport.getHomeZoom ? viewport.getHomeZoom() : 1;
+            viewport.zoomTo(homeZoom * value);
+        }
+        this.applyTransforms();
+    }
+
     showOcrPreview(id, show) {
         const box = this.els.fulltextLayer?.querySelector(`[data-mimir-ocr-id="${id}"]`);
         const item = this.els.fulltextBody?.querySelector(`[data-mimir-ocr-id="${id}"]`);
@@ -3344,13 +3439,15 @@ export class MimirExplorer {
         if (!this.currentManifest) return;
         const manifestId = this.getManifestId();
         if (!manifestId) return;
-        const pageIndex = this.osdExplorer?.currentPage?.() ?? 0;
+        const pageIndex = Number.isFinite(this.currentCanvasIndex) ? this.currentCanvasIndex : (this.osdExplorer?.currentPage?.() ?? 0);
         const label = this.currentParsed?.label || 'Untitled Manifest';
+        const itemLabel = this.currentParsed?.canvases?.[pageIndex]?.label || '';
         const entry = {
             id: `${manifestId}::${pageIndex}`,
             manifestId,
             pageIndex,
             label,
+            itemLabel,
             createdAt: Date.now()
         };
         const list = this.getBookmarks();
@@ -3395,17 +3492,20 @@ export class MimirExplorer {
             return acc;
         }, {});
         const html = Object.values(grouped).map(group => {
-            const items = group.items.map((b) => `
-                <div class="mimir-bookmark-item">
-                    <button class="mimir-bookmark-label" data-mimir-bookmark="${b.id}">
-                        ${this.escapeHtml(group.label)} — p.${b.pageIndex + 1}
-                    </button>
-                    <button class="mimir-icon-btn mimir-bookmark-remove" title="Remove bookmark" data-mimir-bookmark-remove="${b.id}">${ICONS.close}</button>
-                </div>
-            `).join('');
+            const items = group.items.map((b) => {
+                const itemLabel = b.itemLabel || `Page ${b.pageIndex + 1}`;
+                return `
+                    <div class="mimir-bookmark-item">
+                        <button class="mimir-bookmark-label" data-mimir-bookmark="${b.id}">
+                            ${this.escapeHtml(itemLabel)}
+                        </button>
+                        <button class="mimir-icon-btn mimir-bookmark-remove" title="Remove bookmark" data-mimir-bookmark-remove="${b.id}">${ICONS.close}</button>
+                    </div>
+                `;
+            }).join('');
             return `
                 <div class="mimir-bookmarks-group">
-                    <div class="mimir-bookmarks-title">${this.escapeHtml(group.label)}</div>
+                    <div class="mimir-bookmarks-title">${this.escapeHtml(group.label)} (${group.items.length})</div>
                     ${items}
                 </div>
             `;
@@ -3641,9 +3741,13 @@ export class MimirExplorer {
     async loadCollectionMembers(collectionId) {
         if (!collectionId || !this.els.structureCollection) return;
         if (this.collectionCache.has(collectionId)) {
-            this.els.structureCollection.innerHTML = this.collectionCache.get(collectionId);
+            const cached = this.collectionCache.get(collectionId);
+            const html = cached?.html || cached;
+            this.els.structureCollection.innerHTML = html;
             this.bindCollectionLinks(this.els.structureCollection);
             this.highlightActiveCollectionMember();
+            const cachedItems = this.collectionItemsCache.get(collectionId) || cached?.items;
+            if (cachedItems?.length) this.fetchCollectionThumbs(cachedItems, collectionId);
             return;
         }
         this.els.structureCollection.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">Collection</p><p class="mimir-meta-value">Loading collection…</p></div>`;
@@ -3666,17 +3770,18 @@ export class MimirExplorer {
                 </button>`;
             });
             html += `</div></div>`;
-            this.collectionCache.set(collectionId, html);
+            this.collectionItemsCache.set(collectionId, items);
+            this.collectionCache.set(collectionId, { html, items });
             this.els.structureCollection.innerHTML = html;
             this.bindCollectionLinks(this.els.structureCollection);
             this.highlightActiveCollectionMember();
-            this.fetchCollectionThumbs(items);
+            this.fetchCollectionThumbs(items, collectionId);
         } catch (err) {
             this.els.structureCollection.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">Collection</p><p class="mimir-meta-value">Failed to load collection.</p></div>`;
         }
     }
 
-    async fetchCollectionThumbs(items) {
+    async fetchCollectionThumbs(items, collectionId) {
         if (!items?.length || !this.els.structureCollection) return;
         for (const item of items) {
             const id = item.id || item['@id'];
@@ -3696,6 +3801,12 @@ export class MimirExplorer {
             } catch {
                 // ignore
             }
+        }
+        if (collectionId && this.collectionCache.has(collectionId)) {
+            this.collectionCache.set(collectionId, {
+                html: this.els.structureCollection.innerHTML,
+                items: this.collectionItemsCache.get(collectionId) || items
+            });
         }
     }
 
