@@ -11,6 +11,7 @@ import iconRewindForward30 from '@tabler/icons/outline/rewind-forward-30.svg?raw
 import iconChevronLeft from '@tabler/icons/outline/chevron-left.svg?raw';
 import iconChevronRight from '@tabler/icons/outline/chevron-right.svg?raw';
 import iconBook from '@tabler/icons/outline/book.svg?raw';
+import iconBookFilled from '@tabler/icons/filled/book.svg?raw';
 import iconSun from '@tabler/icons/outline/sun.svg?raw';
 import iconMoon from '@tabler/icons/outline/moon.svg?raw';
 import iconMaximize from '@tabler/icons/outline/arrows-maximize.svg?raw';
@@ -23,10 +24,12 @@ import iconMuteOff from '@tabler/icons/outline/volume-off.svg?raw';
 import iconPhoto from '@tabler/icons/outline/photo.svg?raw';
 import iconVideo from '@tabler/icons/outline/video.svg?raw';
 import iconLayout from '@tabler/icons/outline/layout-grid.svg?raw';
+import iconArrowAutofitContent from '@tabler/icons/outline/arrow-autofit-content.svg?raw';
+import iconArrowAutofitContentFilled from '@tabler/icons/filled/arrow-autofit-content.svg?raw';
 import iconCube from '@tabler/icons/outline/cube.svg?raw';
 import iconInfo from '@tabler/icons/outline/info-circle.svg?raw';
 import iconDownload from '@tabler/icons/outline/download.svg?raw';
-import iconFilter from '@tabler/icons/outline/filter.svg?raw';
+import iconFilter from '@tabler/icons/outline/adjustments-horizontal.svg?raw';
 import iconRotate from '@tabler/icons/outline/rotate.svg?raw';
 import iconRotateCw from '@tabler/icons/outline/rotate-clockwise.svg?raw';
 import iconFlipH from '@tabler/icons/outline/flip-horizontal.svg?raw';
@@ -39,6 +42,7 @@ import iconList from '@tabler/icons/outline/list.svg?raw';
 import iconTree from '@tabler/icons/outline/list-tree.svg?raw';
 import iconStack from '@tabler/icons/outline/stack.svg?raw';
 import iconBookmark from '@tabler/icons/outline/bookmark.svg?raw';
+import iconBookmarkFilled from '@tabler/icons/filled/bookmark.svg?raw';
 import iconFileText from '@tabler/icons/outline/file-text.svg?raw';
 import iconHighlight from '@tabler/icons/outline/highlight.svg?raw';
 import ccIcon from './assets/cc/cc.svg';
@@ -68,6 +72,7 @@ const ICONS = {
     chevronLeft: withIconClass(iconChevronLeft),
     chevronRight: withIconClass(iconChevronRight),
     book: withIconClass(iconBook),
+    bookFilled: withIconClass(iconBookFilled),
     sun: withIconClass(iconSun),
     moon: withIconClass(iconMoon),
     maximize: withIconClass(iconMaximize),
@@ -80,6 +85,8 @@ const ICONS = {
     image: withIconClass(iconPhoto),
     av: withIconClass(iconVideo),
     collection: withIconClass(iconLayout),
+    arrowAutofit: withIconClass(iconArrowAutofitContent),
+    arrowAutofitFilled: withIconClass(iconArrowAutofitContentFilled),
     model: withIconClass(iconCube),
     info: withIconClass(iconInfo),
     down: withIconClass(iconDownload),
@@ -96,6 +103,7 @@ const ICONS = {
     tree: withIconClass(iconTree),
     stack: withIconClass(iconStack),
     bookmark: withIconClass(iconBookmark),
+    bookmarkFilled: withIconClass(iconBookmarkFilled),
     fileText: withIconClass(iconFileText),
     highlight: withIconClass(iconHighlight)
 };
@@ -136,6 +144,7 @@ export class MimirExplorer {
         this.avPlayer = null;
         this.isDark = false;
         this.isBookMode = false;
+        this.isContinuousMode = false;
         this.tileSources = [];
         this.avItems = [];
         this.modelItems = [];
@@ -153,6 +162,13 @@ export class MimirExplorer {
         this.fulltextByCanvasId = {};
         this.currentFulltextLines = [];
         this.fulltextMode = 'lines'; // lines | flow
+        this.bookPages = [];
+        this.bookPageIndex = 0;
+        this.bookCenterPending = false;
+        this.bookGap = 0.005;
+        this.layoutModeLocked = false;
+        this.overlayUpdatePending = false;
+        this.currentCanvasIndex = 0;
 
         // Apply theme color as CSS variable
         this.container.style.setProperty('--mimir-primary', this.options.primaryColor);
@@ -198,9 +214,6 @@ export class MimirExplorer {
                                 </div>
                             </div>
                             <div class="mimir-topbar-actions">
-                                <button id="mimir-book-toggle-top" class="mimir-icon-btn mimir-hidden" title="Toggle Book Mode">
-                                    ${ICONS.book}
-                                </button>
                                 <button id="mimir-download" class="mimir-icon-btn mimir-hidden" title="Download Image">
                                     ${ICONS.down}
                                 </button>
@@ -352,9 +365,15 @@ export class MimirExplorer {
                                     <input id="mimir-page-input" class="mimir-page-input" type="number" min="1" value="1">
                                     <span id="mimir-page-total" class="mimir-page-total">/ 1</span>
                                 </div>
-                            </div>
+                                </div>
                                 <button id="mimir-next" class="mimir-icon-btn" title="Next Page">
                                     ${ICONS.chevronRight}
+                                </button>
+                                <button id="mimir-continuous-toggle" class="mimir-icon-btn" title="Toggle Continuous Mode">
+                                    ${ICONS.arrowAutofit}
+                                </button>
+                                <button id="mimir-book-toggle" class="mimir-icon-btn" title="Toggle Book Mode">
+                                    ${ICONS.book}
                                 </button>
                             </div>
                         </div>
@@ -483,7 +502,7 @@ export class MimirExplorer {
                 infoToggle: this.container.querySelector('#mimir-info-toggle'),
                 topFullscreen: this.container.querySelector('#mimir-fullscreen-top'),
                 topDarkToggle: this.container.querySelector('#mimir-dark-toggle-top'),
-                topBookToggle: this.container.querySelector('#mimir-book-toggle-top'),
+                bookToggle: this.container.querySelector('#mimir-book-toggle'),
                 download: this.container.querySelector('#mimir-download'),
                 playToggle: this.container.querySelector('#mimir-play-toggle'),
                 back30: this.container.querySelector('#mimir-back-30'),
@@ -503,6 +522,7 @@ export class MimirExplorer {
                 filterGreen: this.container.querySelector('#mimir-filter-green'),
                 filterBlue: this.container.querySelector('#mimir-filter-blue'),
                 zoom: this.container.querySelector('#mimir-zoom'),
+                continuousToggle: this.container.querySelector('#mimir-continuous-toggle'),
                 bookmarkAdd: this.container.querySelector('#mimir-bookmark-add'),
                 prev: this.container.querySelector('#mimir-prev'),
                 next: this.container.querySelector('#mimir-next'),
@@ -576,7 +596,7 @@ export class MimirExplorer {
             .mimir-loader.mimir-hidden { display: none !important; }
 
             .mimir-topbar {
-                position: absolute; top: 1.5rem; left: 1.5rem;
+                position: absolute; top: 1.5rem; left: 1.5rem; right: 1.5rem;
                 z-index: 30; pointer-events: none; opacity: 0;
                 transition: opacity 0.4s ease;
             }
@@ -607,7 +627,19 @@ export class MimirExplorer {
             }
             .mimir-topbar-actions { display: flex; align-items: center; gap: 0.5rem; }
             .mimir-title-row { display: flex; gap: 0.75rem; align-items: center; }
-            .mimir-title { font-weight: 700; font-size: 0.95rem; color: #111111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            .mimir-title {
+                font-weight: 700;
+                font-size: clamp(0.7rem, 1.4vw, 0.92rem);
+                color: #111111;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                max-width: 100%;
+                line-height: 1.1;
+                display: -webkit-box;
+                -webkit-line-clamp: 2;
+                -webkit-box-orient: vertical;
+                max-height: 2.2em;
+            }
             .mimir-subtitle { font-size: 0.75rem; color: #6b7280; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
             .mimir-link { color: var(--mimir-primary); text-decoration: none; }
             .mimir-link:hover { text-decoration: underline; }
@@ -988,17 +1020,32 @@ export class MimirExplorer {
                 font-size: 0.78rem;
                 line-height: 1.5;
                 white-space: pre-wrap;
+                margin-bottom: 0.75rem;
+            }
+            #mimir-root.mimir-dark .mimir-ocr-card {
+                background: rgba(17,17,17,0.6);
+                border-color: rgba(255,255,255,0.12);
+                color: #f8fafc;
             }
             .mimir-ocr-span {
                 padding: 0.1rem 0.15rem;
                 border-radius: 0.25rem;
                 transition: background 0.15s ease;
             }
+            #mimir-root.mimir-dark .mimir-ocr-span {
+                color: #f8fafc;
+            }
             .mimir-ocr-span.is-active {
                 background: rgba(var(--mimir-primary-rgb), 0.2);
             }
             .mimir-ocr-span.is-hover {
                 background: rgba(var(--mimir-primary-rgb), 0.12);
+            }
+            #mimir-root.mimir-dark .mimir-ocr-span.is-active {
+                background: rgba(var(--mimir-primary-rgb), 0.4);
+            }
+            #mimir-root.mimir-dark .mimir-ocr-span.is-hover {
+                background: rgba(var(--mimir-primary-rgb), 0.25);
             }
             .mimir-ocr-box {
                 position: absolute;
@@ -1228,6 +1275,7 @@ export class MimirExplorer {
             }
             .mimir-page-control {
                 display: grid; gap: 0.15rem; min-width: 6.5rem;
+                margin: 0 0.5rem;
             }
             .mimir-page-row {
                 display: flex; align-items: center; gap: 0.35rem;
@@ -1340,20 +1388,24 @@ export class MimirExplorer {
                 transform: translateX(-50%);
                 padding: 0.5rem 0.6rem;
                 border-radius: 0.75rem;
-                background: rgba(17,17,17,0.9);
-                border: 1px solid rgba(255,255,255,0.15);
+                background: rgba(255,255,255,0.95);
+                border: 1px solid rgba(17,17,17,0.12);
                 display: grid; place-items: center;
                 backdrop-filter: blur(10px);
                 z-index: 10;
+                pointer-events: auto;
             }
             .mimir-zoom-pop input[type="range"] {
                 width: 6px; height: 120px;
                 writing-mode: bt-lr;
                 -webkit-appearance: slider-vertical;
                 background: transparent;
+                outline: none;
+                cursor: pointer;
+                pointer-events: auto;
             }
             .mimir-zoom-pop input[type="range"]::-webkit-slider-runnable-track {
-                background: rgba(255,255,255,0.2); width: 6px; border-radius: 999px;
+                background: rgba(17,17,17,0.18); width: 6px; border-radius: 999px;
             }
             .mimir-zoom-pop input[type="range"]::-webkit-slider-thumb {
                 -webkit-appearance: none; appearance: none;
@@ -1362,7 +1414,7 @@ export class MimirExplorer {
                 margin-left: -4px;
             }
             .mimir-zoom-pop input[type="range"]::-moz-range-track {
-                background: rgba(255,255,255,0.2); width: 6px; border-radius: 999px;
+                background: rgba(17,17,17,0.18); width: 6px; border-radius: 999px;
             }
             .mimir-zoom-pop input[type="range"]::-moz-range-thumb {
                 background: #f8fafc; height: 14px; width: 14px; border-radius: 50%;
@@ -1410,6 +1462,12 @@ export class MimirExplorer {
             #mimir-root.mimir-dark .mimir-zoom-pop {
                 background: rgba(17,17,17,0.95);
                 border-color: rgba(148,163,184,0.3);
+            }
+            #mimir-root.mimir-dark .mimir-zoom-pop input[type="range"]::-webkit-slider-runnable-track {
+                background: rgba(255,255,255,0.2);
+            }
+            #mimir-root.mimir-dark .mimir-zoom-pop input[type="range"]::-moz-range-track {
+                background: rgba(255,255,255,0.2);
             }
 
             .mimir-eq {
@@ -1650,8 +1708,16 @@ export class MimirExplorer {
             if (this.osdExplorer) this.osdExplorer.viewport.goHome();
             if (this.avPlayer) this.avPlayer.currentTime = 0;
         };
-        this.els.btns.prev.onclick = () => this.osdExplorer?.goToPage(this.osdExplorer.currentPage() - 1);
-        this.els.btns.next.onclick = () => this.osdExplorer?.goToPage(this.osdExplorer.currentPage() + 1);
+        this.updateNavHandlers = () => {
+            if (this.isBookMode) {
+                this.els.btns.prev.onclick = () => this.goToBookPage(this.bookPageIndex - 1);
+                this.els.btns.next.onclick = () => this.goToBookPage(this.bookPageIndex + 1);
+            } else {
+                this.els.btns.prev.onclick = () => this.osdExplorer?.goToPage(this.osdExplorer.currentPage() - 1);
+                this.els.btns.next.onclick = () => this.osdExplorer?.goToPage(this.osdExplorer.currentPage() + 1);
+            }
+        };
+        this.updateNavHandlers();
         if (this.els.pageInput) {
             const goToInputPage = () => {
                 if (!this.osdExplorer) return;
@@ -1659,21 +1725,42 @@ export class MimirExplorer {
                 let target = Number(this.els.pageInput.value || 1);
                 if (!Number.isFinite(target)) target = 1;
                 target = Math.max(1, Math.min(total || 1, target));
-                let pageIndex = target - 1;
                 if (this.isBookMode) {
-                    pageIndex = target <= 1 ? 0 : Math.floor(target / 2);
+                    const bookIndex = target <= 1 ? 0 : Math.floor((target - 2) / 2) + 1;
+                    this.goToBookPage(bookIndex);
+                } else {
+                    const pageIndex = target - 1;
+                    this.osdExplorer.goToPage(pageIndex);
                 }
-                this.osdExplorer.goToPage(pageIndex);
             };
             this.els.pageInput.addEventListener('change', goToInputPage);
             this.els.pageInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') goToInputPage();
             });
         }
-        this.els.btns.topBookToggle.onclick = () => {
+        this.els.btns.bookToggle.onclick = () => {
+            const current = this.osdExplorer?.currentPage?.() ?? 0;
+            if (!this.isBookMode) {
+                this.bookPageIndex = current <= 0 ? 0 : Math.floor((current - 1) / 2) + 1;
+            } else {
+                this.bookPageIndex = 0;
+            }
             this.isBookMode = !this.isBookMode;
-            this.els.btns.topBookToggle.style.color = this.isBookMode ? 'var(--mimir-primary)' : '';
-            this.renderImage(this.currentManifest);
+            if (this.isBookMode) this.isContinuousMode = false;
+            this.layoutModeLocked = true;
+            this.els.btns.bookToggle.style.color = this.isBookMode ? 'var(--mimir-primary)' : '';
+            this.els.btns.bookToggle.innerHTML = this.isBookMode ? ICONS.bookFilled : ICONS.book;
+            this.renderImage(this.currentManifest, this.currentParsed);
+            this.updateNavHandlers();
+        };
+        this.els.btns.continuousToggle.onclick = () => {
+            this.isContinuousMode = !this.isContinuousMode;
+            if (this.isContinuousMode) this.isBookMode = false;
+            this.layoutModeLocked = true;
+            this.els.btns.continuousToggle.style.color = this.isContinuousMode ? 'var(--mimir-primary)' : '';
+            this.els.btns.continuousToggle.innerHTML = this.isContinuousMode ? ICONS.arrowAutofitFilled : ICONS.arrowAutofit;
+            this.renderImage(this.currentManifest, this.currentParsed);
+            this.updateNavHandlers();
         };
 
         this.els.btns.playToggle.onclick = () => {
@@ -2046,6 +2133,7 @@ export class MimirExplorer {
         this.showLoader(true); this.resetExplorers();
         try {
             this.currentParsed = null;
+            this.layoutModeLocked = false;
             const response = await fetch(url);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const manifest = await response.json();
@@ -2311,7 +2399,22 @@ export class MimirExplorer {
         this.els.btns.zoom.classList.toggle('mimir-hidden', type !== 'image' && type !== 'av');
         this.els.btns.filterToggle.classList.toggle('mimir-hidden', type !== 'image' && type !== 'av');
         if (type !== 'image' && type !== 'av') this.setFilterOpen(false);
-        this.els.btns.topBookToggle.classList.toggle('mimir-hidden', type !== 'image');
+        if (type === 'image' && !this.layoutModeLocked) {
+            if (parsed?.behavior?.includes('continuous')) {
+                this.isContinuousMode = true;
+                this.isBookMode = false;
+            } else if (parsed?.behavior?.includes('paged')) {
+                this.isBookMode = true;
+                this.isContinuousMode = false;
+                this.bookPageIndex = 0;
+            } else {
+                this.isBookMode = false;
+                this.isContinuousMode = false;
+            }
+        }
+        if (this.updateNavHandlers) this.updateNavHandlers();
+        this.els.btns.bookToggle.classList.toggle('mimir-hidden', type !== 'image' || this.isContinuousMode);
+        this.els.btns.continuousToggle.classList.toggle('mimir-hidden', type !== 'image');
         this.els.btns.download.classList.toggle('mimir-hidden', type !== 'image');
         this.els.btns.topDarkToggle.classList.remove('mimir-hidden');
         this.els.btns.topFullscreen.classList.remove('mimir-hidden');
@@ -2332,16 +2435,52 @@ export class MimirExplorer {
         if (this.els.fulltextLayer) this.els.fulltextLayer.classList.remove('mimir-hidden');
         if (this.els.annotationsLayer) this.els.annotationsLayer.classList.remove('mimir-hidden');
         this.tileSources = parsed?.imageSources?.length ? parsed.imageSources : [];
+        if (this.els.btns.continuousToggle) {
+            this.els.btns.continuousToggle.classList.toggle('mimir-hidden', this.tileSources.length <= 1);
+            this.els.btns.continuousToggle.style.color = this.isContinuousMode ? 'var(--mimir-primary)' : '';
+            this.els.btns.continuousToggle.innerHTML = this.isContinuousMode ? ICONS.arrowAutofitFilled : ICONS.arrowAutofit;
+        }
+        if (this.els.btns.bookToggle) {
+            this.els.btns.bookToggle.classList.toggle('mimir-hidden', this.tileSources.length <= 2);
+            this.els.btns.bookToggle.style.color = this.isBookMode ? 'var(--mimir-primary)' : '';
+            this.els.btns.bookToggle.innerHTML = this.isBookMode ? ICONS.bookFilled : ICONS.book;
+        }
         if (this.osdExplorer) this.osdExplorer.destroy();
         if (this.tileSources.length === 0) { this.showMessage("No image services found."); this.showToolbar(true); return; }
+        const normalizeTileSource = (src) => {
+            if (!src) return src;
+            if (typeof src === 'string') return src;
+            if (src.url) return src.url;
+            return src;
+        };
         let finalSources = this.tileSources;
-        if (this.isBookMode && this.tileSources.length > 1) {
-            finalSources = [this.tileSources[0]];
-            for (let i = 1; i < this.tileSources.length; i += 2) {
-                const spread = [{ tileSource: this.tileSources[i], x: 0, y: 0, width: 1 }];
-                if (this.tileSources[i + 1]) spread.push({ tileSource: this.tileSources[i + 1], x: 1.05, y: 0, width: 1 });
-                finalSources.push(spread);
+        if (this.isContinuousMode) {
+            const gap = 0;
+            finalSources = this.tileSources.map((src, idx) => ({
+                tileSource: normalizeTileSource(src),
+                x: idx * (1 + gap),
+                y: 0,
+                width: 1
+            }));
+        } else if (this.isBookMode) {
+            this.bookPages = [];
+            if (this.tileSources.length > 0) {
+                this.bookPages.push([this.tileSources[0]]);
+                for (let i = 1; i < this.tileSources.length; i += 2) {
+                    const spread = [this.tileSources[i]];
+                    if (this.tileSources[i + 1]) spread.push(this.tileSources[i + 1]);
+                    this.bookPages.push(spread);
+                }
             }
+            const initial = this.bookPages[this.bookPageIndex] || this.bookPages[0] || [];
+            const gap = this.bookGap;
+            const startX = 0;
+            finalSources = initial.map((src, idx) => ({
+                tileSource: normalizeTileSource(src),
+                x: startX + idx * (1 + gap),
+                y: 0,
+                width: 1
+            }));
         }
         const supportsWebGL = (() => {
             try {
@@ -2352,9 +2491,9 @@ export class MimirExplorer {
             }
         })();
         this.osdExplorer = OpenSeadragon({
-            element: this.els.osd, tileSources: finalSources, sequenceMode: true,
+            element: this.els.osd, tileSources: finalSources, sequenceMode: !this.isBookMode && !this.isContinuousMode,
             showNavigationControl: false, showSequenceControl: false, prefixUrl: "",
-            blendTime: 0.1, animationTime: 0.5, preserveViewport: true,
+            blendTime: 0.1, animationTime: 0.5, preserveViewport: !this.isBookMode && !this.isContinuousMode,
             visibilityRatio: 1, minZoomLevel: 0, defaultZoomLevel: 0, homeFillsExplorer: true,
             drawer: supportsWebGL ? ['webgl', 'canvas'] : ['canvas']
         });
@@ -2363,24 +2502,39 @@ export class MimirExplorer {
                 this.osdExplorer.goToPage(this.pendingBookmarkPage);
                 this.pendingBookmarkPage = null;
             }
-            this.updateAnnotationOverlays();
-            this.updateFulltextOverlays();
+            this.scheduleOverlayUpdate();
+            if (this.isBookMode) {
+                this.goToBookPage(this.bookPageIndex, true);
+                this.centerBookSpread();
+            } else if (this.isContinuousMode) {
+                this.centerContinuous();
+            }
         });
-        this.osdExplorer.addHandler('animation', () => { this.updateAnnotationOverlays(); this.updateFulltextOverlays(); });
-        this.osdExplorer.addHandler('resize', () => { this.updateAnnotationOverlays(); this.updateFulltextOverlays(); });
+        this.osdExplorer.addHandler('tile-loaded', () => {
+            if (this.isContinuousMode) this.centerContinuous();
+        });
+        this.osdExplorer.addHandler('tile-loaded', () => {
+            if (this.isBookMode) this.centerBookSpread();
+        });
+        this.osdExplorer.addHandler('animation', () => { this.scheduleOverlayUpdate(); });
+        this.osdExplorer.addHandler('resize', () => { this.scheduleOverlayUpdate(); });
+        if (!this.isBookMode) {
+            this.osdExplorer.addHandler('page', (e) => this.updatePageNum(e.page));
+        }
         if (this.els.renderMode) this.els.renderMode.textContent = supportsWebGL ? 'WEBGL' : 'CANVAS';
         if (this.els.zoomSlider) this.els.zoomSlider.value = 1;
         this.zoomValue = 1;
         this.applyFilters();
         this.applyTransforms();
-        this.osdExplorer.addHandler('page', (e) => this.updatePageNum(e.page));
-        this.updatePageNum(0);
-        this.highlightActiveCanvas(0, true);
+        const initialIndex = this.isBookMode ? this.bookPageIndex : 0;
+        this.updatePageNum(initialIndex);
+        this.highlightActiveCanvas(initialIndex, true);
     }
 
     downloadCurrentImage() {
         if (!this.tileSources?.length) return;
-        const infoUrl = this.tileSources[Math.max(0, this.osdExplorer?.currentPage?.() || 0)] || this.tileSources[0];
+        const pageIndex = this.isBookMode ? (this.bookPageIndex <= 0 ? 0 : this.bookPageIndex * 2 - 1) : Math.max(0, this.osdExplorer?.currentPage?.() || 0);
+        const infoUrl = this.tileSources[Math.max(0, pageIndex)] || this.tileSources[0];
         if (!infoUrl) return;
         const base = infoUrl.endsWith('/info.json') ? infoUrl.slice(0, -10) : infoUrl;
         const url = `${base}/full/full/0/default.jpg`;
@@ -2410,10 +2564,92 @@ export class MimirExplorer {
         }
         if (this.els.pageInput) this.els.pageInput.value = String(currentPage);
         if (this.els.pageTotal) this.els.pageTotal.innerText = `/ ${totalImages}`;
+        if (this.isBookMode) {
+            this.currentCanvasIndex = this.bookPageIndex === 0 ? 0 : (this.bookPageIndex * 2 - 1);
+        } else {
+            this.currentCanvasIndex = osdPageIndex;
+        }
         this.highlightActiveCanvas(osdPageIndex, true);
         this.highlightActiveOutline(osdPageIndex);
         this.updateAnnotationsPanel(osdPageIndex);
         this.updateFulltextPanel(osdPageIndex);
+        this.updateBookmarkButton();
+    }
+
+    goToBookPage(index, skipHome = false) {
+        if (!this.isBookMode || !this.osdExplorer) return;
+        const max = Math.max(0, this.bookPages.length - 1);
+        this.bookPageIndex = Math.max(0, Math.min(max, index));
+        const spread = this.bookPages[this.bookPageIndex] || [];
+        const world = this.osdExplorer.world;
+        while (world.getItemCount() > 0) {
+            world.removeItem(world.getItemAt(0));
+        }
+        const gap = this.bookGap;
+        const startX = 0;
+        spread.forEach((src, idx) => {
+            const tileSource = (typeof src === 'string') ? src : (src?.url || src);
+            if (!tileSource) return;
+            this.osdExplorer.addTiledImage({
+                tileSource,
+                x: startX + idx * (1 + gap),
+                y: 0,
+                width: 1
+            });
+        });
+        if (!skipHome) this.centerBookSpread();
+        this.updatePageNum(this.bookPageIndex);
+        const baseIndex = this.bookPageIndex === 0 ? 0 : (this.bookPageIndex * 2 - 1);
+        this.updateAnnotationsPanel(baseIndex);
+        this.updateFulltextPanel(baseIndex);
+    }
+
+    centerBookSpread() {
+        if (!this.osdExplorer) return;
+        if (this.bookCenterPending) return;
+        this.bookCenterPending = true;
+        const applyCenter = () => {
+            const world = this.osdExplorer.world;
+            if (!world || world.getItemCount() === 0) return false;
+            let union = null;
+            for (let i = 0; i < world.getItemCount(); i += 1) {
+                const item = world.getItemAt(i);
+                if (!item) continue;
+                const b = item.getBounds();
+                if (!b) continue;
+                union = union ? union.union(b) : b;
+            }
+            if (!union) return false;
+            this.osdExplorer.viewport.fitBounds(union, true);
+            this.osdExplorer.viewport.panTo(union.getCenter(), true);
+            if (this.osdExplorer.viewport.applyConstraints) this.osdExplorer.viewport.applyConstraints(true);
+            return true;
+        };
+        requestAnimationFrame(() => {
+            applyCenter();
+            setTimeout(() => {
+                applyCenter();
+                this.bookCenterPending = false;
+            }, 60);
+        });
+    }
+
+    centerContinuous() {
+        if (!this.osdExplorer) return;
+        const world = this.osdExplorer.world;
+        if (!world || world.getItemCount() === 0) return;
+        let union = null;
+        for (let i = 0; i < world.getItemCount(); i += 1) {
+            const item = world.getItemAt(i);
+            if (!item) continue;
+            const b = item.getBounds();
+            if (!b) continue;
+            union = union ? union.union(b) : b;
+        }
+        if (!union) return;
+        this.osdExplorer.viewport.fitBounds(union, true);
+        this.osdExplorer.viewport.panTo(union.getCenter(), true);
+        if (this.osdExplorer.viewport.applyConstraints) this.osdExplorer.viewport.applyConstraints(true);
     }
 
     highlightActiveCanvas(osdPageIndex, scroll) {
@@ -2656,14 +2892,26 @@ export class MimirExplorer {
 
     updateAnnotationsPanel(pageIndex = null) {
         if (!this.els.annotationsList) return;
-        const canvasId = pageIndex === null
-            ? this.currentAnnotations?.[0]?.canvasId
-            : this.currentParsed?.canvases?.[pageIndex]?.id;
         const allMap = this.currentParsed?.annotationsByCanvasId || {};
-        let list = canvasId ? (allMap[canvasId] || []) : [];
-        if (!list.length) {
-            const allKeys = Object.keys(allMap);
-            if (allKeys.length === 1) list = allMap[allKeys[0]] || [];
+        let list = [];
+        if (this.isBookMode && Number.isFinite(this.bookPageIndex)) {
+            const leftIdx = this.bookPageIndex === 0 ? 0 : (this.bookPageIndex * 2 - 1);
+            const rightIdx = leftIdx + 1;
+            const leftId = this.currentParsed?.canvases?.[leftIdx]?.id;
+            const rightId = this.currentParsed?.canvases?.[rightIdx]?.id;
+            list = [
+                ...(leftId ? (allMap[leftId] || []) : []),
+                ...(rightId ? (allMap[rightId] || []) : [])
+            ];
+        } else {
+            const canvasId = pageIndex === null
+                ? this.currentAnnotations?.[0]?.canvasId
+                : this.currentParsed?.canvases?.[pageIndex]?.id;
+            list = canvasId ? (allMap[canvasId] || []) : [];
+            if (!list.length) {
+                const allKeys = Object.keys(allMap);
+                if (allKeys.length === 1) list = allMap[allKeys[0]] || [];
+            }
         }
         this.currentAnnotations = list;
         this.loadAnnotationStylesheets(list);
@@ -2749,13 +2997,44 @@ export class MimirExplorer {
         }
         const lines = this.fulltextByCanvasId[canvasId] || [];
         if (!lines.length) {
-            const sources = this.fulltextSourcesByCanvasId[canvasId] || [];
-            if (sources.length) {
-                if (this.els.fulltextBody) {
-                    this.els.fulltextBody.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">Fulltext</p><p class="mimir-meta-value">Loading fulltext…</p></div>`;
+            if (this.isBookMode) {
+                const leftIdx = this.bookPageIndex === 0 ? 0 : (this.bookPageIndex * 2 - 1);
+                const rightIdx = leftIdx + 1;
+                const leftId = this.currentParsed?.canvases?.[leftIdx]?.id;
+                const rightId = this.currentParsed?.canvases?.[rightIdx]?.id;
+                const leftSources = leftId ? (this.fulltextSourcesByCanvasId[leftId] || []) : [];
+                const rightSources = rightId ? (this.fulltextSourcesByCanvasId[rightId] || []) : [];
+                if (leftSources.length || rightSources.length) {
+                    if (this.els.fulltextBody) {
+                        this.els.fulltextBody.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">Fulltext</p><p class="mimir-meta-value">Loading fulltext…</p></div>`;
+                    }
+                    await Promise.all([
+                        leftId && leftSources.length ? this.fetchAndParseAlto(leftId, leftSources) : null,
+                        rightId && rightSources.length ? this.fetchAndParseAlto(rightId, rightSources) : null
+                    ]);
+                } else {
+                    const keys = Object.keys(this.fulltextSourcesByCanvasId || {});
+                    const keyInfo = keys.length ? `<p class="mimir-meta-value">Sources: ${this.escapeHtml(keys.join(', '))}</p>` : '';
+                    if (this.els.fulltextBody) {
+                        this.els.fulltextBody.innerHTML = `
+                            <div class="mimir-card">
+                                <p class="mimir-meta-title">Fulltext</p>
+                                <p class="mimir-meta-value">No fulltext available.</p>
+                                ${keyInfo}
+                            </div>
+                        `;
+                    }
+                    if (this.els.fulltextLayer) this.els.fulltextLayer.innerHTML = '';
+                    return;
                 }
-                await this.fetchAndParseAlto(canvasId, sources);
             } else {
+                const sources = this.fulltextSourcesByCanvasId[canvasId] || [];
+                if (sources.length) {
+                    if (this.els.fulltextBody) {
+                        this.els.fulltextBody.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">Fulltext</p><p class="mimir-meta-value">Loading fulltext…</p></div>`;
+                    }
+                    await this.fetchAndParseAlto(canvasId, sources);
+                } else {
                 const keys = Object.keys(this.fulltextSourcesByCanvasId || {});
                 const keyInfo = keys.length ? `<p class="mimir-meta-value">Sources: ${this.escapeHtml(keys.join(', '))}</p>` : '';
                 if (this.els.fulltextBody) {
@@ -2767,22 +3046,46 @@ export class MimirExplorer {
                         </div>
                     `;
                 }
-                if (this.els.fulltextLayer) this.els.fulltextLayer.innerHTML = '';
-                return;
+                    if (this.els.fulltextLayer) this.els.fulltextLayer.innerHTML = '';
+                    return;
+                }
             }
         }
         const finalLines = this.fulltextByCanvasId[canvasId] || [];
         this.currentFulltextLines = finalLines;
-        if (!finalLines.length) {
+        if (!finalLines.length && !this.isBookMode) {
             if (this.els.fulltextBody) {
                 this.els.fulltextBody.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">Fulltext</p><p class="mimir-meta-value">No fulltext available.</p></div>`;
             }
             if (this.els.fulltextLayer) this.els.fulltextLayer.innerHTML = '';
             return;
         }
-        const html = this.renderFulltextText(finalLines);
         if (this.els.fulltextBody) {
-            this.els.fulltextBody.innerHTML = `<div class="mimir-ocr-card">${html}</div>`;
+            let html = '';
+            if (this.isBookMode) {
+                const leftIdx = this.bookPageIndex === 0 ? 0 : (this.bookPageIndex * 2 - 1);
+                const rightIdx = leftIdx + 1;
+                const leftId = this.currentParsed?.canvases?.[leftIdx]?.id;
+                const rightId = this.currentParsed?.canvases?.[rightIdx]?.id;
+                const leftLines = leftId ? (this.fulltextByCanvasId[leftId] || []) : [];
+                const rightLines = rightId ? (this.fulltextByCanvasId[rightId] || []) : [];
+                this.currentFulltextLines = [...leftLines, ...rightLines];
+                if (leftLines.length) {
+                    html += `<div class="mimir-ocr-card">${this.renderFulltextText(leftLines)}</div>`;
+                } else {
+                    html += `<div class="mimir-ocr-card"><p class="mimir-meta-value">No fulltext for left page.</p></div>`;
+                }
+                if (rightId) {
+                    if (rightLines.length) {
+                        html += `<div class="mimir-ocr-card">${this.renderFulltextText(rightLines)}</div>`;
+                    } else {
+                        html += `<div class="mimir-ocr-card"><p class="mimir-meta-value">No fulltext for right page.</p></div>`;
+                    }
+                }
+            } else {
+                html = `<div class="mimir-ocr-card">${this.renderFulltextText(finalLines)}</div>`;
+            }
+            this.els.fulltextBody.innerHTML = html;
             this.els.fulltextBody.querySelectorAll('[data-mimir-ocr-id]').forEach(span => {
                 span.onmouseenter = () => {
                     const id = span.getAttribute('data-mimir-ocr-id');
@@ -2910,7 +3213,7 @@ export class MimirExplorer {
         if (!this.osdExplorer || !this.currentFulltextLines?.length) return;
         this.currentFulltextLines.forEach((line) => {
             if (!line.box || !Number.isFinite(line.box.w) || !Number.isFinite(line.box.h)) return;
-            const rect = this.getRectPxFromImage(line.box);
+            const rect = this.getRectPxForCanvas(line.box, line.canvasId);
             if (!rect) return;
             const box = document.createElement('div');
             box.className = 'mimir-ocr-box';
@@ -2923,6 +3226,16 @@ export class MimirExplorer {
             box.addEventListener('mouseenter', () => this.showOcrPreview(line.id, true));
             box.addEventListener('mouseleave', () => this.showOcrPreview(line.id, false));
             box.addEventListener('click', () => this.focusOcrLine(line.id, true));
+        });
+    }
+
+    scheduleOverlayUpdate() {
+        if (this.overlayUpdatePending) return;
+        this.overlayUpdatePending = true;
+        requestAnimationFrame(() => {
+            this.updateAnnotationOverlays();
+            this.updateFulltextOverlays();
+            this.overlayUpdatePending = false;
         });
     }
 
@@ -2952,6 +3265,38 @@ export class MimirExplorer {
         if (!this.osdExplorer || !box) return null;
         const rect = new OpenSeadragon.Rect(box.x, box.y, box.w, box.h);
         const vRect = this.osdExplorer.viewport.imageToViewportRectangle(rect);
+        const tl = this.osdExplorer.viewport.pixelFromPoint(vRect.getTopLeft(), true);
+        const br = this.osdExplorer.viewport.pixelFromPoint(vRect.getBottomRight(), true);
+        return {
+            x: tl.x,
+            y: tl.y,
+            width: Math.max(1, br.x - tl.x),
+            height: Math.max(1, br.y - tl.y)
+        };
+    }
+
+    getRectPxForCanvas(box, canvasId) {
+        if (!this.osdExplorer || !box) return null;
+        const rect = new OpenSeadragon.Rect(box.x, box.y, box.w, box.h);
+        if (!this.isBookMode) {
+            const vRect = this.osdExplorer.viewport.imageToViewportRectangle(rect);
+            const tl = this.osdExplorer.viewport.pixelFromPoint(vRect.getTopLeft(), true);
+            const br = this.osdExplorer.viewport.pixelFromPoint(vRect.getBottomRight(), true);
+            return {
+                x: tl.x,
+                y: tl.y,
+                width: Math.max(1, br.x - tl.x),
+                height: Math.max(1, br.y - tl.y)
+            };
+        }
+        const leftIdx = this.bookPageIndex === 0 ? 0 : (this.bookPageIndex * 2 - 1);
+        const rightIdx = leftIdx + 1;
+        const leftId = this.currentParsed?.canvases?.[leftIdx]?.id;
+        const rightId = this.currentParsed?.canvases?.[rightIdx]?.id;
+        const itemIndex = canvasId === rightId ? 1 : 0;
+        const item = this.osdExplorer.world.getItemAt(itemIndex);
+        if (!item || !item.imageToViewportRectangle) return null;
+        const vRect = item.imageToViewportRectangle(rect);
         const tl = this.osdExplorer.viewport.pixelFromPoint(vRect.getTopLeft(), true);
         const br = this.osdExplorer.viewport.pixelFromPoint(vRect.getBottomRight(), true);
         return {
@@ -3010,15 +3355,30 @@ export class MimirExplorer {
         };
         const list = this.getBookmarks();
         const exists = list.some(b => b.id === entry.id);
-        if (!exists) list.unshift(entry);
-        this.setBookmarks(list);
+        const next = exists ? list.filter(b => b.id !== entry.id) : [entry, ...list];
+        this.setBookmarks(next);
         this.updateBookmarks();
+        this.updateBookmarkButton();
     }
 
     removeBookmark(id) {
         const list = this.getBookmarks().filter(b => b.id !== id);
         this.setBookmarks(list);
         this.updateBookmarks();
+        this.updateBookmarkButton();
+    }
+
+    updateBookmarkButton() {
+        if (!this.els.btns.bookmarkAdd) return;
+        const manifestId = this.getManifestId();
+        if (!manifestId) return;
+        const pageIndex = Number.isFinite(this.currentCanvasIndex) ? this.currentCanvasIndex : (this.osdExplorer?.currentPage?.() ?? 0);
+        const id = `${manifestId}::${pageIndex}`;
+        const list = this.getBookmarks();
+        const exact = list.some(b => b.id === id);
+        const anyInManifest = list.some(b => b.manifestId === manifestId);
+        this.els.btns.bookmarkAdd.innerHTML = exact ? ICONS.bookmarkFilled : ICONS.bookmark;
+        this.els.btns.bookmarkAdd.style.color = (exact || anyInManifest) ? 'var(--mimir-primary)' : '';
     }
 
     updateBookmarks() {
@@ -3084,7 +3444,10 @@ export class MimirExplorer {
 
         annotations.forEach((anno) => {
             if (!anno.xywh) return;
-            const rect = this.getAnnotationRectPx(anno.xywh);
+            const rect = this.getRectPxForCanvas(
+                { x: anno.xywh[0], y: anno.xywh[1], w: anno.xywh[2], h: anno.xywh[3] },
+                anno.canvasId
+            );
             if (!rect) return;
 
             const box = document.createElement('div');
@@ -3432,7 +3795,7 @@ export class MimirExplorer {
         this.els.threeD.classList.remove('mimir-hidden'); this.showToolbar(true);
         if (this.els.fulltextLayer) this.els.fulltextLayer.classList.add('mimir-hidden');
         if (this.els.annotationsLayer) this.els.annotationsLayer.classList.add('mimir-hidden');
-        this.els.btns.zoom.classList.add('mimir-hidden'); this.els.btns.topBookToggle.classList.add('mimir-hidden');
+        this.els.btns.zoom.classList.add('mimir-hidden'); this.els.btns.bookToggle.classList.add('mimir-hidden');
         this.els.btns.filterToggle.classList.add('mimir-hidden');
         this.setFilterOpen(false);
         this.modelItems = parsed?.modelItems || [];
@@ -3757,6 +4120,7 @@ export class MimirExplorer {
             };
         };
         const manifestType = getType(manifest).toLowerCase();
+        const behavior = asArray(manifest.behavior).map(b => (typeof b === 'string' ? b.toLowerCase() : '')).filter(Boolean);
         const isCollection = manifestType.includes('collection');
         const label = getLabel(manifest.label);
         const summary = getSummary(manifest.summary || manifest.description);
@@ -3932,7 +4296,8 @@ export class MimirExplorer {
             annotationsByCanvasId,
             annotationPageRefs,
             fulltextPageRefs,
-            fulltextSourcesByCanvasId
+            fulltextSourcesByCanvasId,
+            behavior
         };
 
         return parsed;
