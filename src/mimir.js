@@ -29,6 +29,7 @@ import iconLayout from '@tabler/icons/outline/layout-grid.svg?raw';
 import iconArrowAutofitContent from '@tabler/icons/outline/arrow-autofit-content.svg?raw';
 import iconArrowAutofitContentFilled from '@tabler/icons/filled/arrow-autofit-content.svg?raw';
 import iconCube from '@tabler/icons/outline/cube.svg?raw';
+import iconLanguage from '@tabler/icons/outline/language.svg?raw';
 import iconInfo from '@tabler/icons/outline/info-circle.svg?raw';
 import iconDownload from '@tabler/icons/outline/download.svg?raw';
 import iconFilter from '@tabler/icons/outline/adjustments-horizontal.svg?raw';
@@ -42,7 +43,7 @@ import iconBrightness from '@tabler/icons/outline/brightness.svg?raw';
 import iconContrast from '@tabler/icons/outline/contrast.svg?raw';
 import iconColorFilter from '@tabler/icons/outline/color-filter.svg?raw';
 import iconPaletteOff from '@tabler/icons/outline/palette-off.svg?raw';
-import iconBulbFilled from '@tabler/icons/filled/bulb-filled.svg?raw';
+import iconBulb from '@tabler/icons/outline/bulb.svg?raw';
 import iconList from '@tabler/icons/outline/list.svg?raw';
 import iconTree from '@tabler/icons/outline/list-tree.svg?raw';
 import iconStack from '@tabler/icons/outline/stack.svg?raw';
@@ -93,6 +94,7 @@ const ICONS = {
     arrowAutofit: withIconClass(iconArrowAutofitContent),
     arrowAutofitFilled: withIconClass(iconArrowAutofitContentFilled),
     model: withIconClass(iconCube),
+    language: withIconClass(iconLanguage),
     info: withIconClass(iconInfo),
     down: withIconClass(iconDownload),
     filter: withIconClass(iconFilter),
@@ -106,7 +108,7 @@ const ICONS = {
     contrast: withIconClass(iconContrast),
     colorFilter: withIconClass(iconColorFilter),
     paletteOff: withIconClass(iconPaletteOff),
-    bulbFilled: withIconClass(iconBulbFilled),
+    bulb: withIconClass(iconBulb),
     list: withIconClass(iconList),
     tree: withIconClass(iconTree),
     stack: withIconClass(iconStack),
@@ -145,6 +147,14 @@ export class MimirExplorer {
             green: 1,
             blue: 1
         };
+        this.supportedViewerLanguages = Array.isArray(options.viewerLanguages) && options.viewerLanguages.length
+            ? options.viewerLanguages.map(l => this.normalizeLang(l))
+            : ['it', 'fr', 'de', 'en', 'es', 'nl'];
+        this.browserLanguage = this.getBrowserLanguage();
+        this.viewerLanguageMode = 'auto';
+        this.viewerLanguage = this.resolveViewerLanguage();
+        this.manifestLanguage = 'auto';
+        this.activeManifestLanguage = null;
 
         this.currentManifest = null;
         this.currentParsed = null;
@@ -196,16 +206,16 @@ export class MimirExplorer {
                 <!-- INTERNAL SIDEBAR -->
                 <aside id="mimir-sidebar" class="mimir-sidebar mimir-hidden">
                     <div class="mimir-sidebar-header">
-                        <h2 class="mimir-eyebrow">Structure</h2>
-                        <button id="mimir-sidebar-close" class="mimir-icon-btn" title="Close Sidebar">
+                        <h2 class="mimir-eyebrow">${this.t('structure')}</h2>
+                        <button id="mimir-sidebar-close" class="mimir-icon-btn" title="${this.t('close_sidebar')}">
                             ${ICONS.close}
                         </button>
                     </div>
                     <div class="mimir-tabs">
-                        <button class="mimir-tab is-active" data-tab="items" data-tooltip="Items">${ICONS.list}</button>
-                        <button class="mimir-tab" data-tab="outline" data-tooltip="Outline">${ICONS.tree}</button>
-                        <button class="mimir-tab" data-tab="collection" data-tooltip="Collection">${ICONS.stack}</button>
-                        <button class="mimir-tab" data-tab="bookmarks" data-tooltip="Bookmarks">${ICONS.bookmark}</button>
+                        <button class="mimir-tab is-active" data-tab="items" data-tooltip="${this.t('items')}">${ICONS.list}</button>
+                        <button class="mimir-tab" data-tab="outline" data-tooltip="${this.t('outline')}">${ICONS.tree}</button>
+                        <button class="mimir-tab" data-tab="collection" data-tooltip="${this.t('collection')}">${ICONS.stack}</button>
+                        <button class="mimir-tab" data-tab="bookmarks" data-tooltip="${this.t('bookmarks')}">${ICONS.bookmark}</button>
                     </div>
                     <div class="mimir-sidebar-body">
                         <div id="mimir-structure-items" class="mimir-tab-panel" data-panel="items"></div>
@@ -223,22 +233,31 @@ export class MimirExplorer {
                                 <div class="mimir-title-row">
                                     <div id="mimir-media-icon" class="mimir-media-icon"></div>
                                     <div class="min-w-0">
-                                        <h2 id="mimir-title" class="mimir-title">Untitled Manifest</h2>
+                                        <h2 id="mimir-title" class="mimir-title">${this.t('untitled')}</h2>
                                         <a id="mimir-collection-link" class="mimir-subtitle mimir-link mimir-hidden" href="#" target="_self" rel="noopener"> </a>
                                     </div>
                                 </div>
                             </div>
                             <div class="mimir-topbar-actions">
-                                <button id="mimir-download" class="mimir-icon-btn mimir-hidden" title="Download Image">
-                                    ${ICONS.down}
-                                </button>
-                                <button id="mimir-dark-toggle-top" class="mimir-icon-btn" title="Toggle Dark Mode">
+                                <span class="mimir-divider"></span>
+                                <div class="mimir-lang">
+                                    <button id="mimir-lang-toggle" class="mimir-icon-btn" title="${this.t('language')}">
+                                        ${ICONS.language}
+                                    </button>
+                                    <div id="mimir-lang-pop" class="mimir-lang-pop mimir-hidden">
+                                        <div class="mimir-lang-section">
+                                            <p class="mimir-meta-title">${this.t('viewer_language')}</p>
+                                            <select id="mimir-viewer-lang" class="mimir-lang-select"></select>
+                                        </div>
+                                        <div class="mimir-lang-section">
+                                            <p class="mimir-meta-title">${this.t('manifest_language')}</p>
+                                            <select id="mimir-manifest-lang" class="mimir-lang-select"></select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button id="mimir-dark-toggle-top" class="mimir-icon-btn" title="${this.t('toggle_dark')}">
                                     <span id="mimir-icon-sun-top" class="mimir-hidden">${ICONS.sun}</span>
                                     <span id="mimir-icon-moon-top">${ICONS.moon}</span>
-                                </button>
-                                <span class="mimir-divider"></span>
-                                <button id="mimir-fullscreen-top" class="mimir-icon-btn" title="Toggle Fullscreen">
-                                    ${ICONS.maximize}
                                 </button>
                             </div>
                         </div>
@@ -254,22 +273,22 @@ export class MimirExplorer {
                         <div class="mimir-empty-card">
                             <img id="mimir-message-logo" src="${this.options.logoUrl}" class="mimir-empty-logo">
                             <div class="mimir-empty-text">
-                                <p id="mimir-message-text" class="mimir-empty-title">Ready to Explore</p>
-                                <p class="mimir-empty-sub">Load a IIIF manifest to get started.</p>
+                                <p id="mimir-message-text" class="mimir-empty-title">${this.t('ready')}</p>
+                                <p class="mimir-empty-sub">${this.t('load_manifest')}</p>
                             </div>
                         </div>
                     </div>
 
                     <div id="mimir-loader" class="mimir-loader mimir-hidden">
                         <div class="mimir-spinner"></div>
-                        <p class="mimir-loader-text">Loading manifest...</p>
+                        <p class="mimir-loader-text">${this.t('loading_manifest')}</p>
                     </div>
 
                     <!-- EDGE PANEL TOGGLES -->
-                    <button id="mimir-sidebar-toggle" class="mimir-edge-toggle mimir-edge-left mimir-hidden" title="Open Structure">
+                    <button id="mimir-sidebar-toggle" class="mimir-edge-toggle mimir-edge-left mimir-hidden" title="${this.t('open_structure')}">
                         ${ICONS.menu}
                     </button>
-                    <button id="mimir-info-toggle" class="mimir-edge-toggle mimir-edge-right mimir-hidden" title="Open Info">
+                    <button id="mimir-info-toggle" class="mimir-edge-toggle mimir-edge-right mimir-hidden" title="${this.t('open_info')}">
                         ${ICONS.info}
                     </button>
                     
@@ -294,35 +313,35 @@ export class MimirExplorer {
                     <!-- FILTER BAR -->
                     <div id="mimir-filter-bar" class="mimir-filter-bar mimir-hidden">
                         <div class="mimir-filter-top-row">
-                            <button id="mimir-rotate-ccw" class="mimir-icon-btn" title="Rotate 90 CCW">${ICONS.rotate}</button>
-                            <button id="mimir-rotate-cw" class="mimir-icon-btn" title="Rotate 90 CW">${ICONS.rotateCw}</button>
-                            <button id="mimir-flip-h" class="mimir-icon-btn" title="Flip Horizontally">${ICONS.flipH}</button>
-                            <button id="mimir-flip-v" class="mimir-icon-btn" title="Flip Vertically">${ICONS.flipV}</button>
-                            <button id="mimir-filter-greyscale" class="mimir-icon-btn" title="Greyscale">${ICONS.paletteOff}</button>
+                            <button id="mimir-rotate-ccw" class="mimir-icon-btn" title="${this.t('rotate_ccw')}">${ICONS.rotate}</button>
+                            <button id="mimir-rotate-cw" class="mimir-icon-btn" title="${this.t('rotate_cw')}">${ICONS.rotateCw}</button>
+                            <button id="mimir-flip-h" class="mimir-icon-btn" title="${this.t('flip_h')}">${ICONS.flipH}</button>
+                            <button id="mimir-flip-v" class="mimir-icon-btn" title="${this.t('flip_v')}">${ICONS.flipV}</button>
+                            <button id="mimir-filter-greyscale" class="mimir-icon-btn" title="${this.t('greyscale')}">${ICONS.paletteOff}</button>
                         </div>
                         <div class="mimir-filter-column">
                             <div class="mimir-filter-group">
-                                <button id="mimir-filter-brightness" class="mimir-icon-btn" title="Brightness">${ICONS.brightness}</button>
+                                <button id="mimir-filter-brightness" class="mimir-icon-btn" title="${this.t('brightness')}">${ICONS.brightness}</button>
                                 <input type="range" id="mimir-filter-brightness-slider" min="0.2" max="2" step="0.01" value="1" class="mimir-filter-slider">
                             </div>
                             <div class="mimir-filter-group">
-                                <button id="mimir-filter-contrast" class="mimir-icon-btn" title="Contrast">${ICONS.contrast}</button>
+                                <button id="mimir-filter-contrast" class="mimir-icon-btn" title="${this.t('contrast')}">${ICONS.contrast}</button>
                                 <input type="range" id="mimir-filter-contrast-slider" min="0.2" max="2" step="0.01" value="1" class="mimir-filter-slider">
                             </div>
                             <div class="mimir-filter-group">
-                                <button id="mimir-filter-greyscale" class="mimir-icon-btn" title="Greyscale">${ICONS.paletteOff}</button>
+                                <button id="mimir-filter-greyscale" class="mimir-icon-btn" title="${this.t('greyscale')}">${ICONS.paletteOff}</button>
                                 <input type="range" id="mimir-filter-greyscale-slider" min="0" max="1" step="0.01" value="0" class="mimir-filter-slider">
                             </div>
                             <div class="mimir-filter-group">
-                                <button id="mimir-filter-red" class="mimir-icon-btn mimir-filter-icon-red" title="Red Channel">${ICONS.colorFilter}</button>
+                                <button id="mimir-filter-red" class="mimir-icon-btn mimir-filter-icon-red" title="${this.t('red_channel')}">${ICONS.colorFilter}</button>
                                 <input type="range" id="mimir-filter-red-slider" min="0" max="2" step="0.01" value="1" class="mimir-filter-slider">
                             </div>
                             <div class="mimir-filter-group">
-                                <button id="mimir-filter-green" class="mimir-icon-btn mimir-filter-icon-green" title="Green Channel">${ICONS.colorFilter}</button>
+                                <button id="mimir-filter-green" class="mimir-icon-btn mimir-filter-icon-green" title="${this.t('green_channel')}">${ICONS.colorFilter}</button>
                                 <input type="range" id="mimir-filter-green-slider" min="0" max="2" step="0.01" value="1" class="mimir-filter-slider">
                             </div>
                             <div class="mimir-filter-group">
-                                <button id="mimir-filter-blue" class="mimir-icon-btn mimir-filter-icon-blue" title="Blue Channel">${ICONS.colorFilter}</button>
+                                <button id="mimir-filter-blue" class="mimir-icon-btn mimir-filter-icon-blue" title="${this.t('blue_channel')}">${ICONS.colorFilter}</button>
                                 <input type="range" id="mimir-filter-blue-slider" min="0" max="2" step="0.01" value="1" class="mimir-filter-slider">
                             </div>
                         </div>
@@ -331,27 +350,27 @@ export class MimirExplorer {
                     <!-- 3D FILTER BAR -->
                     <div id="mimir-3d-filter-bar" class="mimir-filter-bar mimir-hidden">
                         <div class="mimir-filter-top-row">
-                            <button id="mimir-3d-auto-rotate" class="mimir-chip">Auto rotate</button>
+                            <button id="mimir-3d-auto-rotate" class="mimir-chip">${this.t('auto_rotate')}</button>
                         </div>
                         <div class="mimir-filter-column">
                             <div class="mimir-filter-group">
-                                <button id="mimir-3d-light" class="mimir-icon-btn" title="Light Intensity">${ICONS.bulbFilled}</button>
+                                <button id="mimir-3d-light" class="mimir-icon-btn" title="${this.t('light_intensity')}">${ICONS.bulb}</button>
                                 <input type="range" id="mimir-3d-light-slider" min="0" max="2" step="0.01" value="0.85" class="mimir-filter-slider">
                             </div>
                             <div class="mimir-filter-group">
-                                <button id="mimir-3d-ambient" class="mimir-icon-btn" title="Ambient Light">${ICONS.moon}</button>
+                                <button id="mimir-3d-ambient" class="mimir-icon-btn" title="${this.t('ambient_light')}">${ICONS.moon}</button>
                                 <input type="range" id="mimir-3d-ambient-slider" min="0" max="2" step="0.01" value="0.35" class="mimir-filter-slider">
                             </div>
                             <div class="mimir-filter-group">
-                                <button id="mimir-3d-exposure" class="mimir-icon-btn" title="Exposure">${ICONS.brightness}</button>
+                                <button id="mimir-3d-exposure" class="mimir-icon-btn" title="${this.t('exposure')}">${ICONS.brightness}</button>
                                 <input type="range" id="mimir-3d-exposure-slider" min="0.5" max="2" step="0.01" value="1" class="mimir-filter-slider">
                             </div>
                             <div class="mimir-filter-group">
-                                <button id="mimir-3d-azimuth" class="mimir-icon-btn" title="Light Azimuth">${ICONS.skewX}</button>
+                                <button id="mimir-3d-azimuth" class="mimir-icon-btn" title="${this.t('light_azimuth')}">${ICONS.skewX}</button>
                                 <input type="range" id="mimir-3d-azimuth-slider" min="0" max="360" step="1" value="45" class="mimir-filter-slider">
                             </div>
                             <div class="mimir-filter-group">
-                                <button id="mimir-3d-elevation" class="mimir-icon-btn" title="Light Elevation">${ICONS.skewY}</button>
+                                <button id="mimir-3d-elevation" class="mimir-icon-btn" title="${this.t('light_elevation')}">${ICONS.skewY}</button>
                                 <input type="range" id="mimir-3d-elevation-slider" min="-30" max="80" step="1" value="35" class="mimir-filter-slider">
                             </div>
                         </div>
@@ -360,36 +379,36 @@ export class MimirExplorer {
                     <!-- BOTTOM BAR (Unified) -->
                     <div id="mimir-bottom-bar" class="mimir-bottom-bar mimir-toolbar-hidden">
                             <div class="mimir-bottom-group">
-                                <button id="mimir-home" class="mimir-icon-btn" title="Back to Start">
+                                <button id="mimir-home" class="mimir-icon-btn" title="${this.t('back_to_start')}">
                                     ${ICONS.home}
                                 </button>
                                 <span class="mimir-divider"></span>
-                                <button id="mimir-bookmark-add" class="mimir-icon-btn" title="Add Bookmark">
+                                <button id="mimir-bookmark-add" class="mimir-icon-btn" title="${this.t('add_bookmark')}">
                                     ${ICONS.bookmark}
                                 </button>
                                 <span class="mimir-divider"></span>
                                 <div class="mimir-zoom">
-                                    <button id="mimir-zoom" class="mimir-icon-btn" title="Zoom">
+                                    <button id="mimir-zoom" class="mimir-icon-btn" title="${this.t('zoom')}">
                                         ${ICONS.zoomIn}
                                     </button>
                                 <div id="mimir-zoom-pop" class="mimir-zoom-pop mimir-hidden">
                                     <input type="range" id="mimir-zoom-slider" min="0.5" max="4" step="0.01" value="1">
                                 </div>
                             </div>
-                            <button id="mimir-3d-toggle" class="mimir-icon-btn" title="3D Controls">
+                            <button id="mimir-3d-toggle" class="mimir-icon-btn" title="${this.t('three_d_controls')}">
                                 ${ICONS.model}
                             </button>
-                            <button id="mimir-filter-toggle" class="mimir-icon-btn" title="Filters">
+                            <button id="mimir-filter-toggle" class="mimir-icon-btn" title="${this.t('filters')}">
                                 ${ICONS.filter}
                             </button>
                         </div>
                         <div class="mimir-bottom-group mimir-bottom-center">
-                            <button id="mimir-play-toggle" class="mimir-icon-btn mimir-hidden" title="Play/Pause">
+                            <button id="mimir-play-toggle" class="mimir-icon-btn mimir-hidden" title="${this.t('play_pause')}">
                                 <span id="mimir-icon-play">${ICONS.play}</span>
                                 <span id="mimir-icon-pause" class="mimir-hidden">${ICONS.pause}</span>
                             </button>
                             <div id="mimir-av-controls" class="flex items-center gap-3 mimir-hidden">
-                                <button id="mimir-back-30" class="mimir-icon-btn" title="Back 30s">
+                                <button id="mimir-back-30" class="mimir-icon-btn" title="${this.t('back_30')}">
                                     ${ICONS.rewindBack30}
                                 </button>
                                 <div class="flex flex-col gap-1 min-w-[12rem]">
@@ -399,12 +418,12 @@ export class MimirExplorer {
                                         <span id="mimir-av-total">0:00</span>
                                     </div>
                                 </div>
-                                <button id="mimir-forward-30" class="mimir-icon-btn" title="Forward 30s">
+                                <button id="mimir-forward-30" class="mimir-icon-btn" title="${this.t('forward_30')}">
                                     ${ICONS.rewindForward30}
                                 </button>
                             </div>
                             <div id="mimir-image-controls" class="flex items-center gap-2">
-                                <button id="mimir-prev" class="mimir-icon-btn" title="Previous Page">
+                                <button id="mimir-prev" class="mimir-icon-btn" title="${this.t('prev_page')}">
                                     ${ICONS.chevronLeft}
                                 </button>
                                 <div class="mimir-page-control">
@@ -413,21 +432,15 @@ export class MimirExplorer {
                                     <span id="mimir-page-total" class="mimir-page-total">/ 1</span>
                                 </div>
                                 </div>
-                                <button id="mimir-next" class="mimir-icon-btn" title="Next Page">
+                                <button id="mimir-next" class="mimir-icon-btn" title="${this.t('next_page')}">
                                     ${ICONS.chevronRight}
-                                </button>
-                                <button id="mimir-continuous-toggle" class="mimir-icon-btn" title="Toggle Continuous Mode">
-                                    ${ICONS.arrowAutofit}
-                                </button>
-                                <button id="mimir-book-toggle" class="mimir-icon-btn" title="Toggle Book Mode">
-                                    ${ICONS.book}
                                 </button>
                             </div>
                         </div>
                         <div class="mimir-bottom-group">
                             <div id="mimir-av-audio" class="flex items-center gap-2 mimir-hidden">
                                 <div class="mimir-volume-wrap">
-                                    <button id="mimir-volume-toggle" class="mimir-icon-btn" title="Volume">
+                                    <button id="mimir-volume-toggle" class="mimir-icon-btn" title="${this.t('volume')}">
                                         <span id="mimir-icon-volume">${ICONS.volume}</span>
                                         <span id="mimir-icon-volume-off" class="mimir-hidden">${ICONS.mute}</span>
                                     </button>
@@ -435,18 +448,29 @@ export class MimirExplorer {
                                         <input type="range" id="mimir-volume-slider" min="0" max="1" step="0.01" value="1">
                                     </div>
                                 </div>
-                                <button id="mimir-mute-toggle" class="mimir-icon-btn" title="Mute">
+                                <button id="mimir-mute-toggle" class="mimir-icon-btn" title="${this.t('mute')}">
                                     <span id="mimir-icon-mute">${ICONS.muteOff}</span>
                                 </button>
-                                <button id="mimir-av-enlarge" class="mimir-icon-btn mimir-hidden" title="Enlarge Video">
+                                <button id="mimir-av-enlarge" class="mimir-icon-btn mimir-hidden" title="${this.t('enlarge_video')}">
                                     ${ICONS.diag}
                                 </button>
                             </div>
-                            <button id="mimir-dark-toggle" class="mimir-icon-btn mimir-hidden" title="Toggle Dark Mode">
+                            <button id="mimir-dark-toggle" class="mimir-icon-btn mimir-hidden" title="${this.t('toggle_dark')}">
                                 <span id="mimir-icon-sun" class="mimir-hidden">${ICONS.sun}</span>
                                 <span id="mimir-icon-moon">${ICONS.moon}</span>
                             </button>
-                            <button id="mimir-fullscreen" class="mimir-icon-btn mimir-hidden" title="Toggle Fullscreen">
+                                <span id="mimir-divider-right-1" class="mimir-divider"></span>
+                                <button id="mimir-book-toggle" class="mimir-icon-btn" title="${this.t('toggle_book')}">
+                                    ${ICONS.book}
+                                </button>
+                                <button id="mimir-continuous-toggle" class="mimir-icon-btn" title="${this.t('toggle_continuous')}">
+                                    ${ICONS.arrowAutofit}
+                                </button>
+                                <span id="mimir-divider-right-2" class="mimir-divider"></span>
+                                <button id="mimir-download" class="mimir-icon-btn mimir-hidden" title="${this.t('download_image')}">
+                                    ${ICONS.down}
+                                </button>
+                            <button id="mimir-fullscreen" class="mimir-icon-btn mimir-hidden" title="${this.t('toggle_fullscreen')}">
                                 ${ICONS.maximize}
                             </button>
                         </div>
@@ -455,29 +479,29 @@ export class MimirExplorer {
 
                 <aside id="mimir-info" class="mimir-sidebar mimir-sidebar-right mimir-hidden">
                     <div class="mimir-sidebar-header">
-                        <h2 class="mimir-eyebrow">Info</h2>
-                        <button id="mimir-info-close" class="mimir-icon-btn" title="Close Info">
+                        <h2 class="mimir-eyebrow">${this.t('info')}</h2>
+                        <button id="mimir-info-close" class="mimir-icon-btn" title="${this.t('close_info')}">
                             ${ICONS.close}
                         </button>
                     </div>
                     <div class="mimir-tabs">
-                        <button class="mimir-tab is-active" data-tab="metadata" data-tooltip="Metadata">${ICONS.info}</button>
-                        <button class="mimir-tab" data-tab="fulltext" data-tooltip="Fulltext">${ICONS.fileText}</button>
-                        <button class="mimir-tab" data-tab="annotations" data-tooltip="Annotations">${ICONS.highlight}</button>
+                        <button class="mimir-tab is-active" data-tab="metadata" data-tooltip="${this.t('metadata')}">${ICONS.info}</button>
+                        <button class="mimir-tab" data-tab="fulltext" data-tooltip="${this.t('fulltext')}">${ICONS.fileText}</button>
+                        <button class="mimir-tab" data-tab="annotations" data-tooltip="${this.t('annotations')}">${ICONS.highlight}</button>
                     </div>
                     <div class="mimir-sidebar-body">
                         <div id="mimir-metadata" class="mimir-tab-panel" data-panel="metadata"></div>
                         <div id="mimir-fulltext" class="mimir-tab-panel mimir-hidden" data-panel="fulltext">
                             <div class="mimir-annotations-toolbar">
                                 <span></span>
-                                <button id="mimir-fulltext-toggle" class="mimir-chip">Flow</button>
+                                <button id="mimir-fulltext-toggle" class="mimir-chip">${this.t('flow')}</button>
                             </div>
                             <div id="mimir-fulltext-body"></div>
                         </div>
                         <div id="mimir-annotations" class="mimir-tab-panel mimir-hidden" data-panel="annotations">
                             <div class="mimir-annotations-toolbar">
                                 <span id="mimir-annotations-count" class="mimir-annotations-count"></span>
-                                <button id="mimir-annotations-toggle" class="mimir-chip">Show all</button>
+                                <button id="mimir-annotations-toggle" class="mimir-chip">${this.t('show_all')}</button>
                             </div>
                             <div id="mimir-annotations-list" class="mimir-annotations-list"></div>
                         </div>
@@ -551,6 +575,12 @@ export class MimirExplorer {
             threeExposureSlider: this.container.querySelector('#mimir-3d-exposure-slider'),
             threeAzimuthSlider: this.container.querySelector('#mimir-3d-azimuth-slider'),
             threeElevationSlider: this.container.querySelector('#mimir-3d-elevation-slider'),
+            langToggle: this.container.querySelector('#mimir-lang-toggle'),
+            langPop: this.container.querySelector('#mimir-lang-pop'),
+            viewerLangSelect: this.container.querySelector('#mimir-viewer-lang'),
+            manifestLangSelect: this.container.querySelector('#mimir-manifest-lang'),
+            dividerRight1: this.container.querySelector('#mimir-divider-right-1'),
+            dividerRight2: this.container.querySelector('#mimir-divider-right-2'),
             btns: {
                 sidebarToggle: this.container.querySelector('#mimir-sidebar-toggle'),
                 infoToggle: this.container.querySelector('#mimir-info-toggle'),
@@ -598,6 +628,8 @@ export class MimirExplorer {
         this.initDarkMode();
         this.injectStyles();
         this.setupToolbarEvents();
+        this.updateLanguageMenu();
+        this.updateStaticLabels();
         this.bindLayoutRules();
         this.bindTabEvents(this.els.sidebar);
         this.bindTabEvents(this.els.info);
@@ -610,7 +642,7 @@ export class MimirExplorer {
         this.enforcePanelRules();
         
         // Show initial message
-        this.showMessage('Ready to Explore');
+        this.showMessage(this.t('ready'));
         this.updateBottomBarOffset();
 
         // Auto-load manifest from URL query (?manifest=...)
@@ -681,6 +713,31 @@ export class MimirExplorer {
                 padding: 0;
             }
             .mimir-topbar-actions { display: flex; align-items: center; gap: 0.5rem; }
+            .mimir-lang { position: relative; }
+            .mimir-lang-pop {
+                position: absolute;
+                top: calc(100% + 0.6rem);
+                right: 0;
+                padding: 0.75rem;
+                background: rgba(255,255,255,0.95);
+                border: 1px solid rgba(17,17,17,0.12);
+                border-radius: 0.9rem;
+                box-shadow: 0 20px 40px rgba(17,17,17,0.18);
+                display: grid;
+                gap: 0.7rem;
+                min-width: 14rem;
+                z-index: 60;
+            }
+            .mimir-lang-section { display: grid; gap: 0.35rem; }
+            .mimir-lang-select {
+                width: 100%;
+                padding: 0.45rem 0.6rem;
+                border-radius: 0.6rem;
+                border: 1px solid rgba(17,17,17,0.12);
+                background: rgba(255,255,255,0.9);
+                font-size: 0.75rem;
+                color: #111111;
+            }
             .mimir-title-row { display: flex; gap: 0.75rem; align-items: center; }
             .mimir-title {
                 font-weight: 700;
@@ -827,6 +884,21 @@ export class MimirExplorer {
                 color: #111111;
                 line-height: 1.4;
                 word-break: break-word;
+            }
+            .mimir-title-summary .mimir-info-section {
+                gap: 0.35rem;
+                text-align: left;
+            }
+            .mimir-title-lg {
+                font-size: 0.95rem;
+                font-weight: 700;
+                color: #111111;
+                line-height: 1.25;
+            }
+            .mimir-summary-sm {
+                font-size: 0.74rem;
+                color: #6b7280;
+                line-height: 1.45;
             }
             .mimir-info-row {
                 display: flex;
@@ -1346,14 +1418,15 @@ export class MimirExplorer {
                 min-width: 4.5rem; text-align: center;
             }
             .mimir-page-control {
-                display: grid; gap: 0.15rem; min-width: 6.5rem;
+                display: grid; gap: 0.15rem; min-width: 5.5rem;
                 margin: 0 0.5rem;
             }
             .mimir-page-row {
                 display: flex; align-items: center; gap: 0.35rem;
+                justify-content: center;
             }
             .mimir-page-input {
-                width: 3.2rem;
+                width: auto; min-width: 2ch; max-width: 6ch;
                 background: rgba(17,17,17,0.06);
                 border: 1px solid rgba(17,17,17,0.12);
                 border-radius: 0.6rem;
@@ -1370,6 +1443,7 @@ export class MimirExplorer {
             }
             .mimir-page-total {
                 font-size: 0.7rem; font-weight: 700; color: #6b7280;
+                text-align: center;
             }
 
             .mimir-empty {
@@ -1640,6 +1714,15 @@ export class MimirExplorer {
                 border-color: rgba(255,255,255,0.08);
                 color: #e5e7eb;
             }
+            #mimir-root.mimir-dark .mimir-lang-pop {
+                background: rgba(17,17,17,0.9);
+                border-color: rgba(255,255,255,0.12);
+            }
+            #mimir-root.mimir-dark .mimir-lang-select {
+                background: rgba(255,255,255,0.08);
+                border-color: rgba(255,255,255,0.12);
+                color: #e5e7eb;
+            }
             #mimir-root.mimir-dark .mimir-edge-toggle {
                 background: rgba(17,17,17,0.9);
                 border-color: rgba(255,255,255,0.08);
@@ -1691,6 +1774,12 @@ export class MimirExplorer {
             }
             #mimir-root.mimir-dark .mimir-info-value {
                 color: #e5e7eb;
+            }
+            #mimir-root.mimir-dark .mimir-title-lg {
+                color: #e5e7eb;
+            }
+            #mimir-root.mimir-dark .mimir-summary-sm {
+                color: #9ca3af;
             }
             #mimir-root.mimir-dark .mimir-info-divider {
                 background: rgba(255,255,255,0.12);
@@ -2033,21 +2122,60 @@ export class MimirExplorer {
             if (typeof window.toggleDarkMode === 'function') window.toggleDarkMode();
             else this.setDarkMode(!this.isDark);
         };
-        this.els.btns.topDarkToggle.onclick = this.els.btns.darkToggle.onclick;
-        this.els.btns.fullscreen.onclick = () => {
-            if (!document.fullscreenElement) this.container.requestFullscreen();
-            else document.exitFullscreen();
-        };
-        this.els.btns.topFullscreen.onclick = this.els.btns.fullscreen.onclick;
+        if (this.els.btns.topDarkToggle) this.els.btns.topDarkToggle.onclick = this.els.btns.darkToggle.onclick;
+        if (this.els.btns.fullscreen) {
+            this.els.btns.fullscreen.onclick = () => {
+                if (!document.fullscreenElement) this.container.requestFullscreen();
+                else document.exitFullscreen();
+            };
+        }
+        if (this.els.btns.topFullscreen && this.els.btns.fullscreen) {
+            this.els.btns.topFullscreen.onclick = this.els.btns.fullscreen.onclick;
+        }
         this.els.btns.download.onclick = () => this.downloadCurrentImage();
         if (this.els.btns.bookmarkAdd) {
             this.els.btns.bookmarkAdd.onclick = () => this.addBookmark();
         }
         document.addEventListener('fullscreenchange', () => {
             const isFull = !!document.fullscreenElement;
-            this.els.btns.fullscreen.innerHTML = isFull ? ICONS.minimize : ICONS.maximize;
-            this.els.btns.topFullscreen.innerHTML = isFull ? ICONS.minimize : ICONS.maximize;
+            if (this.els.btns.fullscreen) this.els.btns.fullscreen.innerHTML = isFull ? ICONS.minimize : ICONS.maximize;
+            if (this.els.btns.topFullscreen) this.els.btns.topFullscreen.innerHTML = isFull ? ICONS.minimize : ICONS.maximize;
         });
+
+        if (this.els.langToggle && this.els.langPop) {
+            this.els.langToggle.onclick = (e) => {
+                e.stopPropagation();
+                this.els.langPop.classList.toggle('mimir-hidden');
+            };
+            document.addEventListener('click', (e) => {
+                if (!this.els.langPop || this.els.langPop.classList.contains('mimir-hidden')) return;
+                if (this.els.langPop.contains(e.target) || this.els.langToggle.contains(e.target)) return;
+                this.els.langPop.classList.add('mimir-hidden');
+            });
+        }
+        if (this.els.viewerLangSelect) {
+            this.els.viewerLangSelect.onchange = () => {
+                const value = this.els.viewerLangSelect.value;
+                if (value === 'auto') {
+                    this.clearCookie('mimir_viewer_lang');
+                    this.viewerLanguageMode = 'auto';
+                    this.viewerLanguage = this.resolveViewerLanguage();
+                } else {
+                    this.viewerLanguageMode = 'manual';
+                    this.viewerLanguage = this.normalizeLang(value);
+                    this.setCookie('mimir_viewer_lang', this.viewerLanguage);
+                }
+                this.updateStaticLabels();
+                this.refreshLanguageUI();
+            };
+        }
+        if (this.els.manifestLangSelect) {
+            this.els.manifestLangSelect.onchange = () => {
+                const value = this.els.manifestLangSelect.value || 'auto';
+                this.manifestLanguage = value;
+                this.refreshLanguageUI();
+            };
+        }
 
         if (this.els.annotationsToggle) {
             this.els.annotationsToggle.onclick = () => {
@@ -2057,7 +2185,7 @@ export class MimirExplorer {
         if (this.els.fulltextToggle) {
             this.els.fulltextToggle.onclick = () => {
                 this.fulltextMode = this.fulltextMode === 'lines' ? 'flow' : 'lines';
-                this.els.fulltextToggle.textContent = this.fulltextMode === 'lines' ? 'Flow' : 'Lines';
+                this.els.fulltextToggle.textContent = this.fulltextMode === 'lines' ? this.t('flow') : this.t('lines');
                 this.updateFulltextPanel(this.osdExplorer?.currentPage?.() || 0);
             };
         }
@@ -2090,6 +2218,21 @@ export class MimirExplorer {
         if (this.els.btns.threeToggle) this.els.btns.threeToggle.classList.toggle('mimir-filter-active', open);
         if (open && this.filterOpen) this.setFilterOpen(false);
         this.updateBottomBarOffset();
+    }
+
+    updateBottomDividers() {
+        const isVisible = (el) => !!el && !el.classList.contains('mimir-hidden');
+        const leftVisible = isVisible(this.els.avAudio) || isVisible(this.els.btns.darkToggle);
+        const midVisible = isVisible(this.els.btns.bookToggle) || isVisible(this.els.btns.continuousToggle);
+        const rightVisible = isVisible(this.els.btns.download) || isVisible(this.els.btns.fullscreen);
+        if (this.els.dividerRight1) {
+            const show = midVisible ? (leftVisible && midVisible) : (leftVisible && rightVisible);
+            this.els.dividerRight1.classList.toggle('mimir-hidden', !show);
+        }
+        if (this.els.dividerRight2) {
+            const show = midVisible && rightVisible;
+            this.els.dividerRight2.classList.toggle('mimir-hidden', !show);
+        }
     }
 
     applyFilters() {
@@ -2427,6 +2570,8 @@ export class MimirExplorer {
                     if (!key) return;
                     if (!this.currentParsed.annotationsByCanvasId[key]) this.currentParsed.annotationsByCanvasId[key] = [];
                     this.currentParsed.annotationsByCanvasId[key].push(anno);
+                    if (!this.annotationsByCanvasId[key]) this.annotationsByCanvasId[key] = [];
+                    this.annotationsByCanvasId[key].push(anno);
                 });
             } catch (err) {
                 console.warn('Mimir: Failed to load annotation page', ref.id, err);
@@ -2490,16 +2635,7 @@ export class MimirExplorer {
         const asArray = (val) => (Array.isArray(val) ? val : (val ? [val] : []));
         const getId = (obj) => (obj && (obj.id || obj['@id'])) || null;
         const getType = (obj) => (obj && (obj.type || obj['@type'])) || '';
-        const getLabel = (label) => {
-            if (!label) return '';
-            if (typeof label === 'string') return label;
-            if (Array.isArray(label)) return getLabel(label[0]);
-            if (typeof label === 'object') {
-                const values = Object.values(label);
-                return values.length > 0 ? getLabel(values[0]) : '';
-            }
-            return '';
-        };
+        const getLabel = (label) => this.resolveLangValue(label, '');
         const escapeHtml = (text) => String(text)
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
@@ -2647,6 +2783,9 @@ export class MimirExplorer {
         this.updateTopBar(type, manifest, parsed);
         this.updateStructure(parsed);
         this.updateMetadata(manifest, parsed);
+        this.updateLanguageMenu();
+        this.updateStaticLabels();
+        this.updateBottomDividers();
         this.els.btns.sidebarToggle.classList.remove('mimir-hidden');
         this.els.btns.infoToggle.classList.remove('mimir-hidden');
         this.els.sidebar.classList.remove('mimir-hidden');
@@ -2684,13 +2823,13 @@ export class MimirExplorer {
             }
         }
         if (this.updateNavHandlers) this.updateNavHandlers();
-        this.els.btns.bookToggle.classList.toggle('mimir-hidden', type !== 'image' || this.isContinuousMode);
-        this.els.btns.continuousToggle.classList.toggle('mimir-hidden', type !== 'image');
-        this.els.btns.download.classList.toggle('mimir-hidden', type !== 'image');
-        this.els.btns.topDarkToggle.classList.remove('mimir-hidden');
-        this.els.btns.topFullscreen.classList.remove('mimir-hidden');
-        this.els.btns.darkToggle.classList.add('mimir-hidden');
-        this.els.btns.fullscreen.classList.add('mimir-hidden');
+        if (this.els.btns.bookToggle) this.els.btns.bookToggle.classList.toggle('mimir-hidden', type !== 'image' || this.isContinuousMode);
+        if (this.els.btns.continuousToggle) this.els.btns.continuousToggle.classList.toggle('mimir-hidden', type !== 'image');
+        if (this.els.btns.download) this.els.btns.download.classList.toggle('mimir-hidden', type !== 'image');
+        if (this.els.btns.topDarkToggle) this.els.btns.topDarkToggle.classList.remove('mimir-hidden');
+        if (this.els.btns.topFullscreen) this.els.btns.topFullscreen.classList.remove('mimir-hidden');
+        if (this.els.btns.darkToggle) this.els.btns.darkToggle.classList.add('mimir-hidden');
+        if (this.els.btns.fullscreen) this.els.btns.fullscreen.classList.remove('mimir-hidden');
         if (this.els.threeFilterBar) this.els.threeFilterBar.classList.add('mimir-hidden');
         this.threeFilterOpen = false;
 
@@ -2699,7 +2838,7 @@ export class MimirExplorer {
             case 'image': this.renderImage(manifest, parsed); break;
             case 'av': this.renderAV(manifest, parsed); break;
             case '3d': this.render3D(manifest, parsed); break;
-            default: this.showMessage('Unsupported content type.');
+            default: this.showMessage(this.t('unsupported'));
         }
     }
 
@@ -2719,8 +2858,9 @@ export class MimirExplorer {
             this.els.btns.bookToggle.style.color = this.isBookMode ? 'var(--mimir-primary)' : '';
             this.els.btns.bookToggle.innerHTML = this.isBookMode ? ICONS.bookFilled : ICONS.book;
         }
+        this.updateBottomDividers();
         if (this.osdExplorer) this.osdExplorer.destroy();
-        if (this.tileSources.length === 0) { this.showMessage("No image services found."); this.showToolbar(true); return; }
+        if (this.tileSources.length === 0) { this.showMessage(this.t('no_image_services')); this.showToolbar(true); return; }
         const normalizeTileSource = (src) => {
             if (!src) return src;
             if (typeof src === 'string') return src;
@@ -2981,16 +3121,8 @@ export class MimirExplorer {
 
     updateTopBar(type, manifest, parsed) {
         this.els.topBar.style.opacity = '1';
-        const getLabel = (label) => {
-            if (!label) return 'Untitled';
-            if (typeof label === 'string') return label;
-            if (Array.isArray(label)) return getLabel(label[0]);
-            if (typeof label === 'object') {
-                const values = Object.values(label); return values.length > 0 ? getLabel(values[0]) : 'Untitled';
-            }
-            return 'Untitled';
-        };
-        this.els.title.innerText = parsed?.label || getLabel(manifest.label);
+        const getLabel = (label, fallback) => this.resolveLangValue(label, fallback);
+        this.els.title.innerText = parsed?.label || getLabel(manifest.label, this.t('untitled'));
         const collection = parsed?.collectionLinks?.[0];
         if (collection?.label) {
             this.els.collectionLink.textContent = collection.label;
@@ -3015,16 +3147,8 @@ export class MimirExplorer {
     }
 
     updateMetadata(manifest, parsed) {
-        const getLabel = (label) => {
-            if (!label) return '';
-            if (typeof label === 'string') return label;
-            if (Array.isArray(label)) return getLabel(label[0]);
-            if (typeof label === 'object') {
-                const values = Object.values(label); return values.length > 0 ? getLabel(values[0]) : '';
-            }
-            return '';
-        };
-        const attributionLabel = parsed?.attributionLabel || getLabel(manifest?.requiredStatement?.label) || 'Anbieter';
+        const getLabel = (label, fallback = '') => this.resolveLangValue(label, fallback);
+        const attributionLabel = parsed?.attributionLabel || getLabel(manifest?.requiredStatement?.label, this.t('provider')) || this.t('provider');
         const attributionValue = parsed?.attribution || getLabel(manifest?.requiredStatement?.value || manifest?.attribution || '');
         const logoUrl = parsed?.logoUrl;
         const licenseUrl = parsed?.license || '';
@@ -3064,7 +3188,7 @@ export class MimirExplorer {
         if (attributionValue || logoUrl) {
             html += `<div class="mimir-card mimir-card-compact">
                 <div class="mimir-info-section">
-                    <div class="mimir-info-label">${attributionLabel || 'Attribution'}</div>
+                    <div class="mimir-info-label">${attributionLabel || this.t('attribution')}</div>
                     <div class="mimir-info-row">
                         <div class="mimir-info-value">${attributionValue || ''}</div>
                     </div>
@@ -3075,7 +3199,7 @@ export class MimirExplorer {
         if (licenseUrl || licenseIcons) {
             html += `<div class="mimir-card mimir-card-compact">
                 <div class="mimir-info-section">
-                    <div class="mimir-info-label">Rights</div>
+                    <div class="mimir-info-label">${this.t('rights')}</div>
                     <div class="mimir-info-row mimir-info-divider"></div>
                     <div class="mimir-info-row">
                         ${licenseIcons ? `<div class="mimir-license-badges">${licenseIcons}</div>` : ''}
@@ -3101,7 +3225,7 @@ export class MimirExplorer {
         if (!sameProviderAsAttribution && (provider?.label || provider?.logoUrl || provider?.homepage)) {
             html += `<div class="mimir-card mimir-card-compact">
                 <div class="mimir-info-section">
-                    <div class="mimir-info-label">Provider</div>
+                    <div class="mimir-info-label">${this.t('provider')}</div>
                     <div class="mimir-info-row mimir-info-divider"></div>
                     <div class="mimir-info-row">
                         ${provider.logoUrl ? `<img class="mimir-info-logo" src="${provider.logoUrl}" alt="">` : ''}
@@ -3116,15 +3240,21 @@ export class MimirExplorer {
         const summary = parsed?.summary || getLabel(manifest.summary || manifest.description || '');
         const meta = parsed?.metadata?.length ? parsed.metadata : (manifest.metadata || []);
         let metaHtml = '';
-        if (titleLabel) metaHtml += `<div class="mimir-meta-item"><p class="mimir-meta-title">Title</p><p class="mimir-meta-value">${titleLabel}</p></div>`;
-        if (summary) metaHtml += `<div class="mimir-meta-item"><p class="mimir-meta-title">Summary</p><p class="mimir-meta-value">${summary}</p></div>`;
         meta.forEach(item => {
             metaHtml += `<div class="mimir-meta-item"><p class="mimir-meta-title">${getLabel(item.label)}</p><p class="mimir-meta-value">${getLabel(item.value)}</p></div>`;
         });
+        if (titleLabel || summary) {
+            html += `<div class="mimir-card mimir-card-compact mimir-title-summary">
+                <div class="mimir-info-section">
+                    ${titleLabel ? `<div class="mimir-title-lg">${titleLabel}</div>` : ''}
+                    ${summary ? `<div class="mimir-summary-sm">${summary}</div>` : ''}
+                </div>
+            </div>`;
+        }
         html += `<div class="mimir-card mimir-card-compact">
-            <p class="mimir-meta-title">Metadata</p>
+            <p class="mimir-meta-title">${this.t('metadata')}</p>
             <div class="mimir-meta-grid">
-                ${metaHtml || '<p class="mimir-meta-value">No metadata available.</p>'}
+                ${metaHtml || `<p class="mimir-meta-value">${this.t('no_metadata')}</p>`}
             </div>
         </div>`;
         if (this.els.metadataContainer) {
@@ -3134,8 +3264,8 @@ export class MimirExplorer {
         if (this.els.fulltextBody) {
             const text = parsed?.fulltext || '';
             this.els.fulltextBody.innerHTML = text
-                ? `<div class="mimir-card"><p class="mimir-meta-title">Fulltext</p><p class="mimir-meta-value">${text}</p></div>`
-                : `<div class="mimir-card"><p class="mimir-meta-title">Fulltext</p><p class="mimir-meta-value">No fulltext available.</p></div>`;
+                ? `<div class="mimir-card"><p class="mimir-meta-title">${this.t('fulltext')}</p><p class="mimir-meta-value">${text}</p></div>`
+                : `<div class="mimir-card"><p class="mimir-meta-title">${this.t('fulltext')}</p><p class="mimir-meta-value">${this.t('no_fulltext')}</p></div>`;
         }
         this.updateAnnotationsPanel(0);
         this.updateFulltextPanel(0);
@@ -3161,7 +3291,7 @@ export class MimirExplorer {
         this.annotationMode = mode;
         if (this.els.annotationsToggle) {
             const isAll = mode === 'all';
-            this.els.annotationsToggle.textContent = isAll ? 'Show selected' : 'Show all';
+            this.els.annotationsToggle.textContent = isAll ? this.t('show_selected') : this.t('show_all');
             this.els.annotationsToggle.classList.toggle('is-active', isAll);
         }
         this.updateAnnotationsPanel();
@@ -3201,7 +3331,7 @@ export class MimirExplorer {
             this.els.annotationsList.innerHTML = `
                 <div class="mimir-card">
                     <p class="mimir-meta-title">Annotations</p>
-                    <p class="mimir-meta-value">No annotations available.</p>
+                    <p class="mimir-meta-value">${this.t('no_annotations')}</p>
                     <p class="mimir-meta-value">Parsed total: ${totalCount}</p>
                     ${keyInfo}
                 </div>
@@ -3228,7 +3358,7 @@ export class MimirExplorer {
             return `
                 <button class="mimir-anno-item ${isActive ? 'is-active' : ''}" data-mimir-anno-id="${anno.id}">
                     <div class="mimir-anno-title">${this.escapeHtml(title)}</div>
-                    <div class="mimir-anno-excerpt">${this.escapeHtml(short || 'No text')}</div>
+                    <div class="mimir-anno-excerpt">${this.escapeHtml(short || this.t('no_text'))}</div>
                 </button>
             `;
         }).join('');
@@ -3265,7 +3395,7 @@ export class MimirExplorer {
             ? this.currentFulltextLines?.[0]?.canvasId
             : this.currentParsed?.canvases?.[pageIndex]?.id;
         if (!canvasId) {
-            this.els.fulltextContainer.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">Fulltext</p><p class="mimir-meta-value">No fulltext available.</p></div>`;
+            this.els.fulltextContainer.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">${this.t('fulltext')}</p><p class="mimir-meta-value">${this.t('no_fulltext')}</p></div>`;
             return;
         }
         const allSourcesMap = this.fulltextSourcesByCanvasId || {};
@@ -3284,7 +3414,7 @@ export class MimirExplorer {
                 const rightSources = rightId ? (this.fulltextSourcesByCanvasId[rightId] || []) : [];
                 if (leftSources.length || rightSources.length) {
                     if (this.els.fulltextBody) {
-                        this.els.fulltextBody.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">Fulltext</p><p class="mimir-meta-value">Loading fulltext…</p></div>`;
+                        this.els.fulltextBody.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">${this.t('fulltext')}</p><p class="mimir-meta-value">${this.t('loading_fulltext')}</p></div>`;
                     }
                     await Promise.all([
                         leftId && leftSources.length ? this.fetchAndParseAlto(leftId, leftSources) : null,
@@ -3296,8 +3426,8 @@ export class MimirExplorer {
                     if (this.els.fulltextBody) {
                         this.els.fulltextBody.innerHTML = `
                             <div class="mimir-card">
-                                <p class="mimir-meta-title">Fulltext</p>
-                                <p class="mimir-meta-value">No fulltext available.</p>
+                                <p class="mimir-meta-title">${this.t('fulltext')}</p>
+                                <p class="mimir-meta-value">${this.t('no_fulltext')}</p>
                                 ${keyInfo}
                             </div>
                         `;
@@ -3309,7 +3439,7 @@ export class MimirExplorer {
                 const sources = this.fulltextSourcesByCanvasId[canvasId] || [];
                 if (sources.length) {
                     if (this.els.fulltextBody) {
-                        this.els.fulltextBody.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">Fulltext</p><p class="mimir-meta-value">Loading fulltext…</p></div>`;
+                        this.els.fulltextBody.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">${this.t('fulltext')}</p><p class="mimir-meta-value">${this.t('loading_fulltext')}</p></div>`;
                     }
                     await this.fetchAndParseAlto(canvasId, sources);
                 } else {
@@ -3318,8 +3448,8 @@ export class MimirExplorer {
                 if (this.els.fulltextBody) {
                     this.els.fulltextBody.innerHTML = `
                         <div class="mimir-card">
-                            <p class="mimir-meta-title">Fulltext</p>
-                            <p class="mimir-meta-value">No fulltext available.</p>
+                            <p class="mimir-meta-title">${this.t('fulltext')}</p>
+                            <p class="mimir-meta-value">${this.t('no_fulltext')}</p>
                             ${keyInfo}
                         </div>
                     `;
@@ -3333,7 +3463,7 @@ export class MimirExplorer {
         this.currentFulltextLines = finalLines;
         if (!finalLines.length && !this.isBookMode) {
             if (this.els.fulltextBody) {
-                this.els.fulltextBody.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">Fulltext</p><p class="mimir-meta-value">No fulltext available.</p></div>`;
+                this.els.fulltextBody.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">${this.t('fulltext')}</p><p class="mimir-meta-value">${this.t('no_fulltext')}</p></div>`;
             }
             if (this.els.fulltextLayer) this.els.fulltextLayer.innerHTML = '';
             return;
@@ -3351,13 +3481,13 @@ export class MimirExplorer {
                 if (leftLines.length) {
                     html += `<div class="mimir-ocr-card">${this.renderFulltextText(leftLines)}</div>`;
                 } else {
-                    html += `<div class="mimir-ocr-card"><p class="mimir-meta-value">No fulltext for left page.</p></div>`;
+                    html += `<div class="mimir-ocr-card"><p class="mimir-meta-value">${this.t('no_fulltext_left')}</p></div>`;
                 }
                 if (rightId) {
                     if (rightLines.length) {
                         html += `<div class="mimir-ocr-card">${this.renderFulltextText(rightLines)}</div>`;
                     } else {
-                        html += `<div class="mimir-ocr-card"><p class="mimir-meta-value">No fulltext for right page.</p></div>`;
+                        html += `<div class="mimir-ocr-card"><p class="mimir-meta-value">${this.t('no_fulltext_right')}</p></div>`;
                     }
                 }
             } else {
@@ -3694,7 +3824,7 @@ export class MimirExplorer {
         if (!this.els.structureBookmarks) return;
         const list = this.getBookmarks();
         if (!list.length) {
-            this.els.structureBookmarks.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">Bookmarks</p><p class="mimir-meta-value">No bookmarks saved.</p></div>`;
+            this.els.structureBookmarks.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">${this.t('bookmarks')}</p><p class="mimir-meta-value">${this.t('no_bookmarks')}</p></div>`;
             return;
         }
         const grouped = list.reduce((acc, b) => {
@@ -3854,7 +3984,7 @@ export class MimirExplorer {
         let itemsHtml = '';
         if (parsed?.canvases?.length > 1) {
             itemsHtml += `<div class="mimir-card">
-                <p class="mimir-meta-title">Items</p>
+                <p class="mimir-meta-title">${this.t('items')}</p>
                 <div class="mimir-list">`;
             parsed.canvases.forEach((canvas, idx) => {
                 const label = canvas.label || `Canvas ${idx + 1}`;
@@ -3874,7 +4004,7 @@ export class MimirExplorer {
         }
         if (parsed?.avItems?.length > 1) {
             itemsHtml += `<div class="mimir-card">
-                <p class="mimir-meta-title">Segments</p>
+                <p class="mimir-meta-title">${this.t('segments')}</p>
                 <div class="mimir-list">`;
             parsed.avItems.forEach((item, idx) => {
                 const label = item.label || `Track ${idx + 1}`;
@@ -3884,16 +4014,16 @@ export class MimirExplorer {
         }
         if (parsed?.modelItems?.length > 1) {
             itemsHtml += `<div class="mimir-card">
-                <p class="mimir-meta-title">Models</p>
+                <p class="mimir-meta-title">${this.t('models')}</p>
                 <div class="mimir-list">`;
-            itemsHtml += `<button data-mimir-model="-1" class="mimir-list-btn">All models</button>`;
+            itemsHtml += `<button data-mimir-model="-1" class="mimir-list-btn">${this.t('all_models')}</button>`;
             parsed.modelItems.forEach((item, idx) => {
                 const label = item.label || `Model ${idx + 1}`;
                 itemsHtml += `<button data-mimir-model="${idx}" class="mimir-list-btn">${label}</button>`;
             });
             itemsHtml += `</div></div>`;
         }
-        this.els.structureItems.innerHTML = itemsHtml || `<div class="mimir-card"><p class="mimir-meta-title">Items</p><p class="mimir-meta-value">No items available.</p></div>`;
+        this.els.structureItems.innerHTML = itemsHtml || `<div class="mimir-card"><p class="mimir-meta-title">${this.t('items')}</p><p class="mimir-meta-value">${this.t('no_items')}</p></div>`;
 
         let outlineHtml = '';
         if (parsed?.ranges?.length) {
@@ -3919,17 +4049,17 @@ export class MimirExplorer {
                 return html;
             };
             outlineHtml += `<div class="mimir-card">
-                <p class="mimir-meta-title">Table of Content</p>
+                <p class="mimir-meta-title">${this.t('toc')}</p>
                 <div class="mimir-outline">`;
             parsed.ranges.forEach(range => { outlineHtml += renderRange(range); });
             outlineHtml += `</div></div>`;
         }
-        this.els.structureOutline.innerHTML = outlineHtml || `<div class="mimir-card"><p class="mimir-meta-title">Table of Content</p><p class="mimir-meta-value">No table of content available.</p></div>`;
+        this.els.structureOutline.innerHTML = outlineHtml || `<div class="mimir-card"><p class="mimir-meta-title">${this.t('toc')}</p><p class="mimir-meta-value">${this.t('no_toc')}</p></div>`;
 
         let collectionHtml = '';
         if (parsed?.type === 'collection' && parsed?.items?.length) {
             collectionHtml += `<div class="mimir-card">
-                <p class="mimir-meta-title">Collection Items</p>
+                <p class="mimir-meta-title">${this.t('collection_items')}</p>
                 <div class="mimir-list">`;
             parsed.items.forEach((item, idx) => {
                 const label = item.label || `Item ${idx + 1}`;
@@ -3938,12 +4068,12 @@ export class MimirExplorer {
             collectionHtml += `</div></div>`;
         }
         if (parsed?.collectionLinks?.length) {
-            const label = parsed.collectionLinks[0].label || 'Collection';
-            collectionHtml += `<div class="mimir-card"><p class="mimir-meta-title">Collection</p><p class="mimir-meta-value">${label}</p></div>`;
+            const label = parsed.collectionLinks[0].label || this.t('collection');
+            collectionHtml += `<div class="mimir-card"><p class="mimir-meta-title">${this.t('collection')}</p><p class="mimir-meta-value">${label}</p></div>`;
         }
-        this.els.structureCollection.innerHTML = collectionHtml || `<div class="mimir-card"><p class="mimir-meta-title">Collection</p><p class="mimir-meta-value">Not part of a collection.</p></div>`;
+        this.els.structureCollection.innerHTML = collectionHtml || `<div class="mimir-card"><p class="mimir-meta-title">${this.t('collection')}</p><p class="mimir-meta-value">${this.t('not_part_of_collection')}</p></div>`;
 
-        this.els.structureBookmarks.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">Bookmarks</p><p class="mimir-meta-value">Bookmarks will appear here.</p></div>`;
+        this.els.structureBookmarks.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">${this.t('bookmarks')}</p><p class="mimir-meta-value">${this.t('bookmarks_hint')}</p></div>`;
 
         this.bindSidebarActions(parsed, this.els.structureItems);
         this.bindSidebarActions(parsed, this.els.structureOutline);
@@ -3963,14 +4093,14 @@ export class MimirExplorer {
             if (cachedItems?.length) this.fetchCollectionThumbs(cachedItems, collectionId);
             return;
         }
-        this.els.structureCollection.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">Collection</p><p class="mimir-meta-value">Loading collection…</p></div>`;
+        this.els.structureCollection.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">${this.t('collection')}</p><p class="mimir-meta-value">${this.t('loading_collection')}</p></div>`;
         try {
             const res = await fetch(collectionId);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const collection = await res.json();
             const items = Array.isArray(collection.items) ? collection.items : (Array.isArray(collection.members) ? collection.members : []);
             let html = `<div class="mimir-card">
-                <p class="mimir-meta-title">Collection Members</p>
+                <p class="mimir-meta-title">${this.t('collection_members')}</p>
                 <div class="mimir-list">`;
             items.forEach((item, idx) => {
                 const id = item.id || item['@id'];
@@ -3990,7 +4120,7 @@ export class MimirExplorer {
             this.highlightActiveCollectionMember();
             this.fetchCollectionThumbs(items, collectionId);
         } catch (err) {
-            this.els.structureCollection.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">Collection</p><p class="mimir-meta-value">Failed to load collection.</p></div>`;
+            this.els.structureCollection.innerHTML = `<div class="mimir-card"><p class="mimir-meta-title">${this.t('collection')}</p><p class="mimir-meta-value">${this.t('failed_collection')}</p></div>`;
         }
     }
 
@@ -4048,7 +4178,7 @@ export class MimirExplorer {
         if (this.els.fulltextLayer) this.els.fulltextLayer.classList.add('mimir-hidden');
         if (this.els.annotationsLayer) this.els.annotationsLayer.classList.add('mimir-hidden');
         this.avItems = parsed?.avItems || [];
-        if (this.avItems.length === 0) { this.showMessage("No audio/video items found."); return; }
+        if (this.avItems.length === 0) { this.showMessage(this.t('no_av_items')); return; }
         const current = this.avItems[this.currentAvIndex] || this.avItems[0];
         const mediaUrl = current?.id || current?.url;
         const mediaType = current?.mediaType || 'video';
@@ -4252,10 +4382,10 @@ export class MimirExplorer {
     renderCollection(manifest, parsed) {
         this.showToolbar(false);
         if (!parsed?.items?.length) {
-            this.showMessage('Collection is empty or has no items.');
+            this.showMessage(this.t('empty_collection'));
             return;
         }
-        this.showMessage('Select an item from the sidebar to explore.');
+        this.showMessage(this.t('select_collection_item'));
     }
 
     bindSidebarActions(parsed, container) {
@@ -4310,20 +4440,848 @@ export class MimirExplorer {
         });
     }
 
+    t(key) {
+        const dict = {
+            en: {
+                language: 'Language',
+                viewer_language: 'Viewer Language',
+                manifest_language: 'Manifest Language',
+                auto_browser: 'Auto (Browser)',
+                auto: 'Auto',
+                none: 'None',
+                untitled: 'Untitled Manifest',
+                ready: 'Ready to Explore',
+                load_manifest: 'Load a IIIF manifest to get started.',
+                loading_manifest: 'Loading manifest...',
+                structure: 'Structure',
+                info: 'Info',
+                items: 'Items',
+                outline: 'Outline',
+                collection: 'Collection',
+                bookmarks: 'Bookmarks',
+                metadata: 'Metadata',
+                fulltext: 'Fulltext',
+                annotations: 'Annotations',
+                close_sidebar: 'Close Sidebar',
+                close_info: 'Close Info',
+                open_structure: 'Open Structure',
+                open_info: 'Open Info',
+                download_image: 'Download Image',
+                toggle_dark: 'Toggle Dark Mode',
+                toggle_fullscreen: 'Toggle Fullscreen',
+                provider: 'Provider',
+                attribution: 'Attribution',
+                rights: 'Rights',
+                title: 'Title',
+                summary: 'Summary',
+                back_to_start: 'Back to Start',
+                add_bookmark: 'Add Bookmark',
+                zoom: 'Zoom',
+                filters: 'Filters',
+                three_d_controls: '3D Controls',
+                play_pause: 'Play/Pause',
+                back_30: 'Back 30s',
+                forward_30: 'Forward 30s',
+                prev_page: 'Previous Page',
+                next_page: 'Next Page',
+                toggle_continuous: 'Toggle Continuous Mode',
+                toggle_book: 'Toggle Book Mode',
+                volume: 'Volume',
+                mute: 'Mute',
+                enlarge_video: 'Enlarge Video',
+                rotate_ccw: 'Rotate 90 CCW',
+                rotate_cw: 'Rotate 90 CW',
+                flip_h: 'Flip Horizontally',
+                flip_v: 'Flip Vertically',
+                greyscale: 'Greyscale',
+                brightness: 'Brightness',
+                contrast: 'Contrast',
+                red_channel: 'Red Channel',
+                green_channel: 'Green Channel',
+                blue_channel: 'Blue Channel',
+                auto_rotate: 'Auto rotate',
+                light_intensity: 'Light Intensity',
+                ambient_light: 'Ambient Light',
+                exposure: 'Exposure',
+                light_azimuth: 'Light Azimuth',
+                light_elevation: 'Light Elevation',
+                show_all: 'Show all',
+                show_selected: 'Show selected',
+                flow: 'Flow',
+                lines: 'Lines',
+                no_metadata: 'No metadata available.',
+                no_fulltext: 'No fulltext available.',
+                no_fulltext_left: 'No fulltext for left page.',
+                no_fulltext_right: 'No fulltext for right page.',
+                no_annotations: 'No annotations available.',
+                no_text: 'No text',
+                no_items: 'No items available.',
+                toc: 'Table of Content',
+                no_toc: 'No table of content available.',
+                collection_items: 'Collection Items',
+                collection_members: 'Collection Members',
+                not_part_of_collection: 'Not part of a collection.',
+                bookmarks_hint: 'Bookmarks will appear here.',
+                no_bookmarks: 'No bookmarks saved.',
+                no_image_services: 'No image services found.',
+                no_av_items: 'No audio/video items found.',
+                segments: 'Segments',
+                models: 'Models',
+                all_models: 'All models',
+                loading_collection: 'Loading collection…',
+                failed_collection: 'Failed to load collection.',
+                loading_fulltext: 'Loading fulltext…',
+                unsupported: 'Unsupported content type.',
+                empty_collection: 'Collection is empty or has no items.',
+                select_collection_item: 'Select an item from the sidebar to explore.'
+            },
+            de: {
+                language: 'Sprache',
+                viewer_language: 'Viewer-Sprache',
+                manifest_language: 'Manifest-Sprache',
+                auto_browser: 'Auto (Browser)',
+                auto: 'Auto',
+                none: 'Ohne',
+                untitled: 'Unbenanntes Manifest',
+                ready: 'Bereit zum Erkunden',
+                load_manifest: 'Lade ein IIIF-Manifest, um zu starten.',
+                loading_manifest: 'Manifest wird geladen...',
+                structure: 'Struktur',
+                info: 'Info',
+                items: 'Seiten',
+                outline: 'Inhalt',
+                collection: 'Sammlung',
+                bookmarks: 'Lesezeichen',
+                metadata: 'Metadaten',
+                fulltext: 'Volltext',
+                annotations: 'Annotationen',
+                close_sidebar: 'Seitenleiste schließen',
+                close_info: 'Info schließen',
+                open_structure: 'Struktur öffnen',
+                open_info: 'Info öffnen',
+                download_image: 'Bild herunterladen',
+                toggle_dark: 'Dark Mode umschalten',
+                toggle_fullscreen: 'Vollbild umschalten',
+                provider: 'Anbieter',
+                attribution: 'Attribution',
+                rights: 'Rechte',
+                title: 'Titel',
+                summary: 'Zusammenfassung',
+                back_to_start: 'Zum Anfang',
+                add_bookmark: 'Lesezeichen hinzufügen',
+                zoom: 'Zoom',
+                filters: 'Filter',
+                three_d_controls: '3D-Steuerung',
+                play_pause: 'Abspielen/Pause',
+                back_30: '30s zurück',
+                forward_30: '30s vor',
+                prev_page: 'Vorherige Seite',
+                next_page: 'Nächste Seite',
+                toggle_continuous: 'Fortlaufend umschalten',
+                toggle_book: 'Buchmodus umschalten',
+                volume: 'Lautstärke',
+                mute: 'Stumm',
+                enlarge_video: 'Video vergrößern',
+                rotate_ccw: '90° links drehen',
+                rotate_cw: '90° rechts drehen',
+                flip_h: 'Horizontal spiegeln',
+                flip_v: 'Vertikal spiegeln',
+                greyscale: 'Graustufen',
+                brightness: 'Helligkeit',
+                contrast: 'Kontrast',
+                red_channel: 'Rot-Kanal',
+                green_channel: 'Grün-Kanal',
+                blue_channel: 'Blau-Kanal',
+                auto_rotate: 'Auto drehen',
+                light_intensity: 'Lichtstärke',
+                ambient_light: 'Umgebungslicht',
+                exposure: 'Belichtung',
+                light_azimuth: 'Licht-Azimut',
+                light_elevation: 'Licht-Höhe',
+                show_all: 'Alle zeigen',
+                show_selected: 'Auswahl zeigen',
+                flow: 'Fließtext',
+                lines: 'Zeilen',
+                no_metadata: 'Keine Metadaten verfügbar.',
+                no_fulltext: 'Kein Volltext verfügbar.',
+                no_fulltext_left: 'Kein Volltext für linke Seite.',
+                no_fulltext_right: 'Kein Volltext für rechte Seite.',
+                no_annotations: 'Keine Annotationen verfügbar.',
+                no_text: 'Kein Text',
+                no_items: 'Keine Seiten verfügbar.',
+                toc: 'Inhaltsverzeichnis',
+                no_toc: 'Kein Inhaltsverzeichnis verfügbar.',
+                collection_items: 'Sammlungsobjekte',
+                collection_members: 'Sammlungsmitglieder',
+                not_part_of_collection: 'Nicht Teil einer Sammlung.',
+                bookmarks_hint: 'Lesezeichen erscheinen hier.',
+                no_bookmarks: 'Keine Lesezeichen gespeichert.',
+                no_image_services: 'Keine Bilddienste gefunden.',
+                no_av_items: 'Keine Audio/Video-Elemente gefunden.',
+                segments: 'Segmente',
+                models: 'Modelle',
+                all_models: 'Alle Modelle',
+                loading_collection: 'Sammlung wird geladen…',
+                failed_collection: 'Sammlung konnte nicht geladen werden.',
+                loading_fulltext: 'Volltext wird geladen…',
+                unsupported: 'Inhaltstyp nicht unterstützt.',
+                empty_collection: 'Sammlung ist leer oder hat keine Elemente.',
+                select_collection_item: 'Wähle ein Objekt aus der Seitenleiste.'
+            },
+            fr: {
+                language: 'Langue',
+                viewer_language: 'Langue du viewer',
+                manifest_language: 'Langue du manifeste',
+                auto_browser: 'Auto (navigateur)',
+                auto: 'Auto',
+                none: 'Aucune',
+                untitled: 'Manifest sans titre',
+                ready: 'Prêt à explorer',
+                load_manifest: 'Chargez un manifeste IIIF pour commencer.',
+                loading_manifest: 'Chargement du manifeste...',
+                structure: 'Structure',
+                info: 'Info',
+                items: 'Pages',
+                outline: 'Plan',
+                collection: 'Collection',
+                bookmarks: 'Signets',
+                metadata: 'Métadonnées',
+                fulltext: 'Texte intégral',
+                annotations: 'Annotations',
+                close_sidebar: 'Fermer la barre latérale',
+                close_info: 'Fermer les infos',
+                open_structure: 'Ouvrir la structure',
+                open_info: 'Ouvrir les infos',
+                download_image: 'Télécharger l’image',
+                toggle_dark: 'Basculer en mode sombre',
+                toggle_fullscreen: 'Basculer en plein écran',
+                provider: 'Fournisseur',
+                attribution: 'Attribution',
+                rights: 'Droits',
+                title: 'Titre',
+                summary: 'Résumé',
+                back_to_start: 'Retour au début',
+                add_bookmark: 'Ajouter un signet',
+                zoom: 'Zoom',
+                filters: 'Filtres',
+                three_d_controls: 'Contrôles 3D',
+                play_pause: 'Lecture/Pause',
+                back_30: 'Retour 30 s',
+                forward_30: 'Avance 30 s',
+                prev_page: 'Page précédente',
+                next_page: 'Page suivante',
+                toggle_continuous: 'Basculer en continu',
+                toggle_book: 'Basculer mode livre',
+                volume: 'Volume',
+                mute: 'Muet',
+                enlarge_video: 'Agrandir la vidéo',
+                rotate_ccw: 'Tourner 90° à gauche',
+                rotate_cw: 'Tourner 90° à droite',
+                flip_h: 'Retourner horizontalement',
+                flip_v: 'Retourner verticalement',
+                greyscale: 'Niveaux de gris',
+                brightness: 'Luminosité',
+                contrast: 'Contraste',
+                red_channel: 'Canal rouge',
+                green_channel: 'Canal vert',
+                blue_channel: 'Canal bleu',
+                auto_rotate: 'Rotation auto',
+                light_intensity: 'Intensité lumineuse',
+                ambient_light: 'Lumière ambiante',
+                exposure: 'Exposition',
+                light_azimuth: 'Azimut de la lumière',
+                light_elevation: 'Élévation de la lumière',
+                show_all: 'Tout afficher',
+                show_selected: 'Afficher la sélection',
+                flow: 'Texte continu',
+                lines: 'Lignes',
+                no_metadata: 'Aucune métadonnée disponible.',
+                no_fulltext: 'Aucun texte intégral disponible.',
+                no_fulltext_left: 'Pas de texte pour la page gauche.',
+                no_fulltext_right: 'Pas de texte pour la page droite.',
+                no_annotations: 'Aucune annotation disponible.',
+                no_text: 'Aucun texte',
+                no_items: 'Aucune page disponible.',
+                toc: 'Table des matières',
+                no_toc: 'Aucune table des matières disponible.',
+                collection_items: 'Objets de la collection',
+                collection_members: 'Membres de la collection',
+                not_part_of_collection: 'Pas dans une collection.',
+                bookmarks_hint: 'Les signets apparaîtront ici.',
+                no_bookmarks: 'Aucun signet enregistré.',
+                no_image_services: 'Aucun service d’images trouvé.',
+                no_av_items: 'Aucun élément audio/vidéo trouvé.',
+                segments: 'Segments',
+                models: 'Modèles',
+                all_models: 'Tous les modèles',
+                loading_collection: 'Chargement de la collection…',
+                failed_collection: 'Échec du chargement de la collection.',
+                loading_fulltext: 'Chargement du texte intégral…',
+                unsupported: 'Type de contenu non pris en charge.',
+                empty_collection: 'La collection est vide ou sans éléments.',
+                select_collection_item: 'Sélectionnez un élément dans la barre latérale.'
+            },
+            it: {
+                language: 'Lingua',
+                viewer_language: 'Lingua del viewer',
+                manifest_language: 'Lingua del manifesto',
+                auto_browser: 'Auto (browser)',
+                auto: 'Auto',
+                none: 'Nessuna',
+                untitled: 'Manifest senza titolo',
+                ready: 'Pronto per esplorare',
+                load_manifest: 'Carica un manifesto IIIF per iniziare.',
+                loading_manifest: 'Caricamento manifesto...',
+                structure: 'Struttura',
+                info: 'Info',
+                items: 'Pagine',
+                outline: 'Indice',
+                collection: 'Collezione',
+                bookmarks: 'Segnalibri',
+                metadata: 'Metadati',
+                fulltext: 'Testo completo',
+                annotations: 'Annotazioni',
+                close_sidebar: 'Chiudi barra laterale',
+                close_info: 'Chiudi info',
+                open_structure: 'Apri struttura',
+                open_info: 'Apri info',
+                download_image: 'Scarica immagine',
+                toggle_dark: 'Attiva/disattiva tema scuro',
+                toggle_fullscreen: 'Attiva/disattiva schermo intero',
+                provider: 'Fornitore',
+                attribution: 'Attribuzione',
+                rights: 'Diritti',
+                title: 'Titolo',
+                summary: 'Sommario',
+                back_to_start: 'Torna all’inizio',
+                add_bookmark: 'Aggiungi segnalibro',
+                zoom: 'Zoom',
+                filters: 'Filtri',
+                three_d_controls: 'Controlli 3D',
+                play_pause: 'Play/Pausa',
+                back_30: 'Indietro 30 s',
+                forward_30: 'Avanti 30 s',
+                prev_page: 'Pagina precedente',
+                next_page: 'Pagina successiva',
+                toggle_continuous: 'Attiva/disattiva continuo',
+                toggle_book: 'Attiva/disattiva modalità libro',
+                volume: 'Volume',
+                mute: 'Muto',
+                enlarge_video: 'Ingrandisci video',
+                rotate_ccw: 'Ruota 90° a sinistra',
+                rotate_cw: 'Ruota 90° a destra',
+                flip_h: 'Ribalta orizzontalmente',
+                flip_v: 'Ribalta verticalmente',
+                greyscale: 'Scala di grigi',
+                brightness: 'Luminosità',
+                contrast: 'Contrasto',
+                red_channel: 'Canale rosso',
+                green_channel: 'Canale verde',
+                blue_channel: 'Canale blu',
+                auto_rotate: 'Rotazione automatica',
+                light_intensity: 'Intensità luce',
+                ambient_light: 'Luce ambientale',
+                exposure: 'Esposizione',
+                light_azimuth: 'Azimut luce',
+                light_elevation: 'Elevazione luce',
+                show_all: 'Mostra tutto',
+                show_selected: 'Mostra selezionati',
+                flow: 'Testo continuo',
+                lines: 'Righe',
+                no_metadata: 'Nessun metadato disponibile.',
+                no_fulltext: 'Nessun testo completo disponibile.',
+                no_fulltext_left: 'Nessun testo per la pagina sinistra.',
+                no_fulltext_right: 'Nessun testo per la pagina destra.',
+                no_annotations: 'Nessuna annotazione disponibile.',
+                no_text: 'Nessun testo',
+                no_items: 'Nessuna pagina disponibile.',
+                toc: 'Indice',
+                no_toc: 'Nessun indice disponibile.',
+                collection_items: 'Elementi della collezione',
+                collection_members: 'Membri della collezione',
+                not_part_of_collection: 'Non parte di una collezione.',
+                bookmarks_hint: 'I segnalibri appariranno qui.',
+                no_bookmarks: 'Nessun segnalibro salvato.',
+                no_image_services: 'Nessun servizio immagini trovato.',
+                no_av_items: 'Nessun elemento audio/video trovato.',
+                segments: 'Segmenti',
+                models: 'Modelli',
+                all_models: 'Tutti i modelli',
+                loading_collection: 'Caricamento collezione…',
+                failed_collection: 'Caricamento collezione non riuscito.',
+                loading_fulltext: 'Caricamento testo completo…',
+                unsupported: 'Tipo di contenuto non supportato.',
+                empty_collection: 'La collezione è vuota o senza elementi.',
+                select_collection_item: 'Seleziona un elemento dalla barra laterale.'
+            },
+            es: {
+                language: 'Idioma',
+                viewer_language: 'Idioma del visor',
+                manifest_language: 'Idioma del manifiesto',
+                auto_browser: 'Auto (navegador)',
+                auto: 'Auto',
+                none: 'Ninguno',
+                untitled: 'Manifiesto sin título',
+                ready: 'Listo para explorar',
+                load_manifest: 'Carga un manifiesto IIIF para comenzar.',
+                loading_manifest: 'Cargando manifiesto...',
+                structure: 'Estructura',
+                info: 'Info',
+                items: 'Páginas',
+                outline: 'Índice',
+                collection: 'Colección',
+                bookmarks: 'Marcadores',
+                metadata: 'Metadatos',
+                fulltext: 'Texto completo',
+                annotations: 'Anotaciones',
+                close_sidebar: 'Cerrar barra lateral',
+                close_info: 'Cerrar info',
+                open_structure: 'Abrir estructura',
+                open_info: 'Abrir info',
+                download_image: 'Descargar imagen',
+                toggle_dark: 'Cambiar modo oscuro',
+                toggle_fullscreen: 'Cambiar pantalla completa',
+                provider: 'Proveedor',
+                attribution: 'Atribución',
+                rights: 'Derechos',
+                title: 'Título',
+                summary: 'Resumen',
+                back_to_start: 'Volver al inicio',
+                add_bookmark: 'Añadir marcador',
+                zoom: 'Zoom',
+                filters: 'Filtros',
+                three_d_controls: 'Controles 3D',
+                play_pause: 'Reproducir/Pausa',
+                back_30: 'Atrás 30 s',
+                forward_30: 'Adelante 30 s',
+                prev_page: 'Página anterior',
+                next_page: 'Página siguiente',
+                toggle_continuous: 'Alternar continuo',
+                toggle_book: 'Alternar modo libro',
+                volume: 'Volumen',
+                mute: 'Silencio',
+                enlarge_video: 'Agrandar vídeo',
+                rotate_ccw: 'Girar 90° a la izquierda',
+                rotate_cw: 'Girar 90° a la derecha',
+                flip_h: 'Voltear horizontalmente',
+                flip_v: 'Voltear verticalmente',
+                greyscale: 'Escala de grises',
+                brightness: 'Brillo',
+                contrast: 'Contraste',
+                red_channel: 'Canal rojo',
+                green_channel: 'Canal verde',
+                blue_channel: 'Canal azul',
+                auto_rotate: 'Rotación automática',
+                light_intensity: 'Intensidad de luz',
+                ambient_light: 'Luz ambiental',
+                exposure: 'Exposición',
+                light_azimuth: 'Azimut de la luz',
+                light_elevation: 'Elevación de la luz',
+                show_all: 'Mostrar todo',
+                show_selected: 'Mostrar selección',
+                flow: 'Texto continuo',
+                lines: 'Líneas',
+                no_metadata: 'No hay metadatos disponibles.',
+                no_fulltext: 'No hay texto completo disponible.',
+                no_fulltext_left: 'Sin texto para la página izquierda.',
+                no_fulltext_right: 'Sin texto para la página derecha.',
+                no_annotations: 'No hay anotaciones disponibles.',
+                no_text: 'Sin texto',
+                no_items: 'No hay páginas disponibles.',
+                toc: 'Tabla de contenidos',
+                no_toc: 'No hay tabla de contenidos disponible.',
+                collection_items: 'Elementos de la colección',
+                collection_members: 'Miembros de la colección',
+                not_part_of_collection: 'No forma parte de una colección.',
+                bookmarks_hint: 'Los marcadores aparecerán aquí.',
+                no_bookmarks: 'No hay marcadores guardados.',
+                no_image_services: 'No se encontraron servicios de imagen.',
+                no_av_items: 'No se encontraron elementos de audio/vídeo.',
+                segments: 'Segmentos',
+                models: 'Modelos',
+                all_models: 'Todos los modelos',
+                loading_collection: 'Cargando colección…',
+                failed_collection: 'No se pudo cargar la colección.',
+                loading_fulltext: 'Cargando texto completo…',
+                unsupported: 'Tipo de contenido no compatible.',
+                empty_collection: 'La colección está vacía o sin elementos.',
+                select_collection_item: 'Selecciona un elemento en la barra lateral.'
+            },
+            nl: {
+                language: 'Taal',
+                viewer_language: 'Viewer-taal',
+                manifest_language: 'Manifest-taal',
+                auto_browser: 'Auto (browser)',
+                auto: 'Auto',
+                none: 'Geen',
+                untitled: 'Manifest zonder titel',
+                ready: 'Klaar om te verkennen',
+                load_manifest: 'Laad een IIIF-manifest om te beginnen.',
+                loading_manifest: 'Manifest laden...',
+                structure: 'Structuur',
+                info: 'Info',
+                items: 'Pagina’s',
+                outline: 'Inhoud',
+                collection: 'Collectie',
+                bookmarks: 'Bladwijzers',
+                metadata: 'Metadata',
+                fulltext: 'Volledige tekst',
+                annotations: 'Annotaties',
+                close_sidebar: 'Zijbalk sluiten',
+                close_info: 'Info sluiten',
+                open_structure: 'Structuur openen',
+                open_info: 'Info openen',
+                download_image: 'Afbeelding downloaden',
+                toggle_dark: 'Donkere modus wisselen',
+                toggle_fullscreen: 'Volledig scherm wisselen',
+                provider: 'Provider',
+                attribution: 'Attributie',
+                rights: 'Rechten',
+                title: 'Titel',
+                summary: 'Samenvatting',
+                back_to_start: 'Terug naar start',
+                add_bookmark: 'Bladwijzer toevoegen',
+                zoom: 'Zoom',
+                filters: 'Filters',
+                three_d_controls: '3D-bediening',
+                play_pause: 'Afspelen/Pauze',
+                back_30: '30 s terug',
+                forward_30: '30 s vooruit',
+                prev_page: 'Vorige pagina',
+                next_page: 'Volgende pagina',
+                toggle_continuous: 'Doorlopend wisselen',
+                toggle_book: 'Boekmodus wisselen',
+                volume: 'Volume',
+                mute: 'Dempen',
+                enlarge_video: 'Video vergroten',
+                rotate_ccw: '90° links draaien',
+                rotate_cw: '90° rechts draaien',
+                flip_h: 'Horizontaal spiegelen',
+                flip_v: 'Verticaal spiegelen',
+                greyscale: 'Grijstinten',
+                brightness: 'Helderheid',
+                contrast: 'Contrast',
+                red_channel: 'Rood kanaal',
+                green_channel: 'Groen kanaal',
+                blue_channel: 'Blauw kanaal',
+                auto_rotate: 'Automatisch draaien',
+                light_intensity: 'Lichtintensiteit',
+                ambient_light: 'Omgevingslicht',
+                exposure: 'Belichting',
+                light_azimuth: 'Licht-azimut',
+                light_elevation: 'Licht-elevatie',
+                show_all: 'Alles tonen',
+                show_selected: 'Selectie tonen',
+                flow: 'Doorlopende tekst',
+                lines: 'Regels',
+                no_metadata: 'Geen metadata beschikbaar.',
+                no_fulltext: 'Geen volledige tekst beschikbaar.',
+                no_fulltext_left: 'Geen tekst voor de linkerpagina.',
+                no_fulltext_right: 'Geen tekst voor de rechterpagina.',
+                no_annotations: 'Geen annotaties beschikbaar.',
+                no_text: 'Geen tekst',
+                no_items: 'Geen pagina’s beschikbaar.',
+                toc: 'Inhoudsopgave',
+                no_toc: 'Geen inhoudsopgave beschikbaar.',
+                collection_items: 'Collectie-items',
+                collection_members: 'Collectieleden',
+                not_part_of_collection: 'Geen onderdeel van een collectie.',
+                bookmarks_hint: 'Bladwijzers verschijnen hier.',
+                no_bookmarks: 'Geen bladwijzers opgeslagen.',
+                no_image_services: 'Geen afbeeldingsdiensten gevonden.',
+                no_av_items: 'Geen audio-/video-items gevonden.',
+                segments: 'Segmenten',
+                models: 'Modellen',
+                all_models: 'Alle modellen',
+                loading_collection: 'Collectie laden…',
+                failed_collection: 'Collectie laden mislukt.',
+                loading_fulltext: 'Volledige tekst laden…',
+                unsupported: 'Inhoudstype niet ondersteund.',
+                empty_collection: 'Collectie is leeg of heeft geen items.',
+                select_collection_item: 'Selecteer een item in de zijbalk.'
+            }
+        };
+        const lang = this.viewerLanguage && dict[this.viewerLanguage] ? this.viewerLanguage : 'en';
+        return dict[lang]?.[key] || dict.en[key] || key;
+    }
+
+    getBrowserLanguage() {
+        if (typeof navigator === 'undefined') return 'en';
+        const lang = navigator.language || (Array.isArray(navigator.languages) ? navigator.languages[0] : 'en');
+        return this.normalizeLang(lang);
+    }
+
+    normalizeLang(lang) {
+        if (!lang) return '';
+        return String(lang).toLowerCase().split('-')[0];
+    }
+
+    resolveViewerLanguage() {
+        const saved = this.getCookie('mimir_viewer_lang');
+        if (saved) {
+            this.viewerLanguageMode = 'manual';
+            return this.normalizeLang(saved);
+        }
+        this.viewerLanguageMode = 'auto';
+        const browser = this.normalizeLang(this.browserLanguage);
+        if (this.supportedViewerLanguages.includes(browser)) return browser;
+        if (this.supportedViewerLanguages.includes('en')) return 'en';
+        return this.supportedViewerLanguages[0] || 'en';
+    }
+
+    collectManifestLanguages(obj) {
+        const langs = new Set();
+        const isLangMap = (val) => {
+            if (!val || typeof val !== 'object' || Array.isArray(val)) return false;
+            const keys = Object.keys(val);
+            if (!keys.length) return false;
+            const blocked = new Set(['id', 'type', '@id', '@type', '@context']);
+            let match = 0;
+            let total = 0;
+            keys.forEach(k => {
+                const v = val[k];
+                const looksLike = !blocked.has(k) && (k === 'none' || /^[a-z]{2,3}(-[a-z0-9]+)?$/i.test(k));
+                const hasValue = Array.isArray(v) || typeof v === 'string';
+                if (looksLike && hasValue) match += 1;
+                total += 1;
+            });
+            return match > 0 && match === total;
+        };
+        const walk = (node) => {
+            if (!node) return;
+            if (Array.isArray(node)) {
+                node.forEach(walk);
+                return;
+            }
+            if (typeof node === 'object') {
+                if (isLangMap(node)) {
+                    Object.keys(node).forEach(k => langs.add(this.normalizeLang(k) || k));
+                    return;
+                }
+                Object.values(node).forEach(walk);
+            }
+        };
+        walk(obj);
+        return Array.from(langs).filter(Boolean);
+    }
+
+    pickManifestLanguage(langs) {
+        const available = langs.map(l => this.normalizeLang(l) || l);
+        if (!available.length) return '';
+        const desired = this.manifestLanguage && this.manifestLanguage !== 'auto'
+            ? this.normalizeLang(this.manifestLanguage)
+            : '';
+        if (desired && available.includes(desired)) return desired;
+        const viewer = this.normalizeLang(this.viewerLanguage);
+        if (viewer && available.includes(viewer)) return viewer;
+        const browser = this.normalizeLang(this.browserLanguage);
+        if (browser && available.includes(browser)) return browser;
+        if (available.includes('none')) return 'none';
+        if (available.includes('en')) return 'en';
+        return available[0];
+    }
+
+    resolveLangValue(value, fallback = '') {
+        if (value == null) return fallback;
+        if (typeof value === 'string') return value;
+        if (Array.isArray(value)) {
+            return this.resolveLangValue(value[0], fallback);
+        }
+        if (typeof value === 'object') {
+            const keys = Object.keys(value);
+            const isLangMap = keys.some(k => k === 'none' || /^[a-z]{2,3}(-[a-z0-9]+)?$/i.test(k));
+            if (isLangMap) {
+                const pref = [
+                    this.activeManifestLanguage,
+                    this.normalizeLang(this.viewerLanguage),
+                    this.normalizeLang(this.browserLanguage),
+                    'none',
+                    'en'
+                ].filter(Boolean);
+                const keys = Object.keys(value);
+                const pick = (lang) => value[lang] ?? value[keys.find(k => this.normalizeLang(k) === lang)];
+                for (const lang of pref) {
+                    const v = pick(lang);
+                    if (v != null) return this.resolveLangValue(v, fallback);
+                }
+                const first = value[keys[0]];
+                return this.resolveLangValue(first, fallback);
+            }
+            const firstVal = value[keys[0]];
+            return this.resolveLangValue(firstVal, fallback);
+        }
+        return fallback;
+    }
+
+    getLanguageDisplayName(code) {
+        if (!code) return '';
+        if (code === 'none') return this.t('none');
+        try {
+            const dn = new Intl.DisplayNames([this.viewerLanguage || 'en'], { type: 'language' });
+            return dn.of(code) || code;
+        } catch {
+            return code;
+        }
+    }
+
+    updateLanguageMenu() {
+        if (!this.els.viewerLangSelect || !this.els.manifestLangSelect) return;
+        const manifestLangs = this.currentParsed?.manifestLanguages || [];
+        const viewerLangs = Array.from(new Set(this.supportedViewerLanguages));
+        if (this.viewerLanguage && !viewerLangs.includes(this.viewerLanguage)) viewerLangs.push(this.viewerLanguage);
+        const browser = this.normalizeLang(this.browserLanguage);
+        const viewerVal = this.viewerLanguageMode === 'manual' ? this.viewerLanguage : 'auto';
+        const manifestVal = this.manifestLanguage || 'auto';
+        const viewerOptions = [
+            `<option value="auto">${this.t('auto_browser')}${browser ? `: ${this.getLanguageDisplayName(browser)}` : ''}</option>`,
+            ...viewerLangs.map(l => `<option value="${l}">${this.getLanguageDisplayName(l)} (${l})</option>`)
+        ].join('');
+        const manifestOptions = [
+            `<option value="auto">${this.t('auto')}</option>`,
+            ...manifestLangs.map(l => `<option value="${l}">${this.getLanguageDisplayName(l)} (${l})</option>`)
+        ].join('');
+        this.els.viewerLangSelect.innerHTML = viewerOptions;
+        this.els.manifestLangSelect.innerHTML = manifestOptions;
+        this.els.viewerLangSelect.value = viewerVal;
+        this.els.manifestLangSelect.value = manifestVal;
+    }
+
+    updateStaticLabels() {
+        if (this.els.sidebar) {
+            const header = this.els.sidebar.querySelector('.mimir-sidebar-header .mimir-eyebrow');
+            if (header) header.textContent = this.t('structure');
+            const tabItems = this.els.sidebar.querySelector('[data-tab="items"]');
+            const tabOutline = this.els.sidebar.querySelector('[data-tab="outline"]');
+            const tabCollection = this.els.sidebar.querySelector('[data-tab="collection"]');
+            const tabBookmarks = this.els.sidebar.querySelector('[data-tab="bookmarks"]');
+            if (tabItems) tabItems.setAttribute('data-tooltip', this.t('items'));
+            if (tabOutline) tabOutline.setAttribute('data-tooltip', this.t('outline'));
+            if (tabCollection) tabCollection.setAttribute('data-tooltip', this.t('collection'));
+            if (tabBookmarks) tabBookmarks.setAttribute('data-tooltip', this.t('bookmarks'));
+            if (this.els.sidebarClose) this.els.sidebarClose.title = this.t('close_sidebar');
+        }
+        if (this.els.info) {
+            const header = this.els.info.querySelector('.mimir-sidebar-header .mimir-eyebrow');
+            if (header) header.textContent = this.t('info');
+            const tabMeta = this.els.info.querySelector('[data-tab="metadata"]');
+            const tabFulltext = this.els.info.querySelector('[data-tab="fulltext"]');
+            const tabAnno = this.els.info.querySelector('[data-tab="annotations"]');
+            if (tabMeta) tabMeta.setAttribute('data-tooltip', this.t('metadata'));
+            if (tabFulltext) tabFulltext.setAttribute('data-tooltip', this.t('fulltext'));
+            if (tabAnno) tabAnno.setAttribute('data-tooltip', this.t('annotations'));
+            if (this.els.infoClose) this.els.infoClose.title = this.t('close_info');
+        }
+        if (this.els.fulltextToggle) {
+            this.els.fulltextToggle.textContent = this.fulltextMode === 'lines' ? this.t('flow') : this.t('lines');
+        }
+        if (this.els.annotationsToggle) {
+            const isAll = this.annotationMode === 'all';
+            this.els.annotationsToggle.textContent = isAll ? this.t('show_selected') : this.t('show_all');
+        }
+        if (this.els.threeAutoRotate) {
+            this.els.threeAutoRotate.textContent = this.t('auto_rotate');
+        }
+        if (this.els.btns.sidebarToggle) this.els.btns.sidebarToggle.title = this.t('open_structure');
+        if (this.els.btns.infoToggle) this.els.btns.infoToggle.title = this.t('open_info');
+        if (this.els.btns.home) this.els.btns.home.title = this.t('back_to_start');
+        if (this.els.btns.bookmarkAdd) this.els.btns.bookmarkAdd.title = this.t('add_bookmark');
+        if (this.els.btns.zoom) this.els.btns.zoom.title = this.t('zoom');
+        if (this.els.btns.threeToggle) this.els.btns.threeToggle.title = this.t('three_d_controls');
+        if (this.els.btns.filterToggle) this.els.btns.filterToggle.title = this.t('filters');
+        if (this.els.btns.rotateCcw) this.els.btns.rotateCcw.title = this.t('rotate_ccw');
+        if (this.els.btns.rotateCw) this.els.btns.rotateCw.title = this.t('rotate_cw');
+        if (this.els.btns.flipH) this.els.btns.flipH.title = this.t('flip_h');
+        if (this.els.btns.flipV) this.els.btns.flipV.title = this.t('flip_v');
+        if (this.els.btns.filterGreyscale) this.els.btns.filterGreyscale.title = this.t('greyscale');
+        if (this.els.btns.filterBrightness) this.els.btns.filterBrightness.title = this.t('brightness');
+        if (this.els.btns.filterContrast) this.els.btns.filterContrast.title = this.t('contrast');
+        if (this.els.btns.filterRed) this.els.btns.filterRed.title = this.t('red_channel');
+        if (this.els.btns.filterGreen) this.els.btns.filterGreen.title = this.t('green_channel');
+        if (this.els.btns.filterBlue) this.els.btns.filterBlue.title = this.t('blue_channel');
+        const threeLight = this.container.querySelector('#mimir-3d-light');
+        const threeAmbient = this.container.querySelector('#mimir-3d-ambient');
+        const threeExposure = this.container.querySelector('#mimir-3d-exposure');
+        const threeAz = this.container.querySelector('#mimir-3d-azimuth');
+        const threeEl = this.container.querySelector('#mimir-3d-elevation');
+        if (threeLight) threeLight.title = this.t('light_intensity');
+        if (threeAmbient) threeAmbient.title = this.t('ambient_light');
+        if (threeExposure) threeExposure.title = this.t('exposure');
+        if (threeAz) threeAz.title = this.t('light_azimuth');
+        if (threeEl) threeEl.title = this.t('light_elevation');
+        if (this.els.btns.prev) this.els.btns.prev.title = this.t('prev_page');
+        if (this.els.btns.next) this.els.btns.next.title = this.t('next_page');
+        if (this.els.btns.continuousToggle) this.els.btns.continuousToggle.title = this.t('toggle_continuous');
+        if (this.els.btns.bookToggle) this.els.btns.bookToggle.title = this.t('toggle_book');
+        if (this.els.btns.download) this.els.btns.download.title = this.t('download_image');
+        if (this.els.btns.topDarkToggle) this.els.btns.topDarkToggle.title = this.t('toggle_dark');
+        if (this.els.btns.topFullscreen) this.els.btns.topFullscreen.title = this.t('toggle_fullscreen');
+        if (this.els.btns.fullscreen) this.els.btns.fullscreen.title = this.t('toggle_fullscreen');
+        if (this.els.btns.darkToggle) this.els.btns.darkToggle.title = this.t('toggle_dark');
+        if (this.els.btns.volumeToggle) this.els.btns.volumeToggle.title = this.t('volume');
+        if (this.els.btns.muteToggle) this.els.btns.muteToggle.title = this.t('mute');
+        if (this.els.btns.avEnlarge) this.els.btns.avEnlarge.title = this.t('enlarge_video');
+        if (this.els.btns.playToggle) this.els.btns.playToggle.title = this.t('play_pause');
+        if (this.els.btns.back30) this.els.btns.back30.title = this.t('back_30');
+        if (this.els.btns.forward30) this.els.btns.forward30.title = this.t('forward_30');
+        if (this.els.langToggle) this.els.langToggle.title = this.t('language');
+        if (this.els.langPop) {
+            const titles = this.els.langPop.querySelectorAll('.mimir-lang-section .mimir-meta-title');
+            if (titles[0]) titles[0].textContent = this.t('viewer_language');
+            if (titles[1]) titles[1].textContent = this.t('manifest_language');
+        }
+        if (this.els.messageText) this.els.messageText.textContent = this.t('ready');
+        const emptySub = this.els.message?.querySelector('.mimir-empty-sub');
+        if (emptySub) emptySub.textContent = this.t('load_manifest');
+        const loaderText = this.els.loader?.querySelector('.mimir-loader-text');
+        if (loaderText) loaderText.textContent = this.t('loading_manifest');
+    }
+
+    refreshLanguageUI() {
+        if (!this.currentManifest) return;
+        const cachedAnnotations = this.annotationsByCanvasId || {};
+        const cachedFulltext = this.fulltextByCanvasId || {};
+        this.currentParsed = this.parseManifest(this.currentManifest);
+        if (this.currentParsed) {
+            Object.entries(cachedAnnotations).forEach(([k, list]) => {
+                if (!this.currentParsed.annotationsByCanvasId[k]) this.currentParsed.annotationsByCanvasId[k] = [];
+                this.currentParsed.annotationsByCanvasId[k].push(...list);
+            });
+            this.fulltextByCanvasId = cachedFulltext;
+            this.fulltextSourcesByCanvasId = this.currentParsed.fulltextSourcesByCanvasId || this.fulltextSourcesByCanvasId;
+        }
+        this.updateTopBar(this.currentParsed?.type, this.currentManifest, this.currentParsed);
+        this.updateStructure(this.currentParsed);
+        this.updateMetadata(this.currentManifest, this.currentParsed);
+        this.updateLanguageMenu();
+        this.updateStaticLabels();
+        const page = this.isBookMode ? this.bookPageIndex : (this.osdExplorer?.currentPage?.() || 0);
+        this.updateAnnotationsPanel(page);
+        this.updateFulltextPanel(page);
+    }
+
+    getCookie(name) {
+        if (typeof document === 'undefined') return '';
+        const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]+)`));
+        return match ? decodeURIComponent(match[1]) : '';
+    }
+
+    setCookie(name, value, maxAge = 31536000) {
+        if (typeof document === 'undefined') return;
+        document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAge}`;
+    }
+
+    clearCookie(name) {
+        if (typeof document === 'undefined') return;
+        document.cookie = `${name}=; path=/; max-age=0`;
+    }
+
     parseManifest(manifest) {
         const asArray = (val) => (Array.isArray(val) ? val : (val ? [val] : []));
         const getId = (obj) => (obj && (obj.id || obj['@id'])) || null;
         const getType = (obj) => (obj && (obj.type || obj['@type'])) || '';
-        const getLabel = (label) => {
-            if (!label) return '';
-            if (typeof label === 'string') return label;
-            if (Array.isArray(label)) return getLabel(label[0]);
-            if (typeof label === 'object') {
-                const values = Object.values(label);
-                return values.length > 0 ? getLabel(values[0]) : '';
-            }
-            return '';
-        };
+        const manifestLanguages = this.collectManifestLanguages(manifest);
+        this.activeManifestLanguage = this.pickManifestLanguage(manifestLanguages);
+        const getLabel = (label, fallback = '') => this.resolveLangValue(label, fallback);
         const getSummary = (summary) => getLabel(summary);
         const escapeHtml = (text) => String(text)
             .replace(/&/g, '&amp;')
@@ -4783,7 +5741,8 @@ export class MimirExplorer {
             annotationPageRefs,
             fulltextPageRefs,
             fulltextSourcesByCanvasId,
-            behavior
+            behavior,
+            manifestLanguages
         };
 
         return parsed;
@@ -4798,6 +5757,7 @@ export class MimirExplorer {
         this.currentParsed = null;
         this.currentAnnotations = [];
         this.selectedAnnotationId = null;
+        this.annotationsByCanvasId = {};
         this.currentFulltextLines = [];
         this.fulltextByCanvasId = {};
         this.fulltextSourcesByCanvasId = {};
