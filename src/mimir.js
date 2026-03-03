@@ -50,7 +50,9 @@ import iconStack from '@tabler/icons/outline/stack.svg?raw';
 import iconBookmark from '@tabler/icons/outline/bookmark.svg?raw';
 import iconBookmarkFilled from '@tabler/icons/filled/bookmark.svg?raw';
 import iconFileText from '@tabler/icons/outline/file-text.svg?raw';
+import iconFileUnknown from '@tabler/icons/outline/file-unknown.svg?raw';
 import iconHighlight from '@tabler/icons/outline/highlight.svg?raw';
+import iconEyeSpark from '@tabler/icons/outline/eye-spark.svg?raw';
 import ccIcon from './assets/cc/cc.svg';
 import byIcon from './assets/cc/by.svg';
 import ncIcon from './assets/cc/nc.svg';
@@ -115,7 +117,9 @@ const ICONS = {
     bookmark: withIconClass(iconBookmark),
     bookmarkFilled: withIconClass(iconBookmarkFilled),
     fileText: withIconClass(iconFileText),
-    highlight: withIconClass(iconHighlight)
+    fileUnknown: withIconClass(iconFileUnknown),
+    highlight: withIconClass(iconHighlight),
+    eyeSpark: withIconClass(iconEyeSpark)
 };
 
 export class MimirExplorer {
@@ -177,6 +181,7 @@ export class MimirExplorer {
         this.currentAnnotations = [];
         this.annotationStylesheets = new Set();
         this.pendingBookmarkPage = null;
+        this.pendingStartPage = null;
         this.fulltextSourcesByCanvasId = {};
         this.fulltextPageRefs = [];
         this.fulltextByCanvasId = {};
@@ -194,6 +199,11 @@ export class MimirExplorer {
         this.pendingZoomValue = null;
         this.pendingContentState = null;
         this.threeFilterOpen = false;
+        this.regionBlurEnabled = true;
+        this.hasRegion = false;
+        this.currentRegion = null;
+        this.missingObjectUrls = [];
+        this.missingPageIndexes = new Set();
 
         // Apply theme color as CSS variable
         this.container.style.setProperty('--mimir-primary', this.options.primaryColor);
@@ -264,6 +274,12 @@ export class MimirExplorer {
                     </div>
 
                     <div id="mimir-osd" class="absolute inset-0"></div>
+                    <div id="mimir-region-blur" class="mimir-region-blur mimir-hidden" aria-hidden="true">
+                        <div class="mimir-region-blur-pane mimir-region-top"></div>
+                        <div class="mimir-region-blur-pane mimir-region-left"></div>
+                        <div class="mimir-region-blur-pane mimir-region-right"></div>
+                        <div class="mimir-region-blur-pane mimir-region-bottom"></div>
+                    </div>
                     <div id="mimir-fulltext-layer" class="mimir-fulltext-layer"></div>
                     <div id="mimir-annotations-layer" class="mimir-annotations-layer"></div>
                     <div id="mimir-av" class="absolute inset-0 flex items-center justify-center mimir-hidden text-white"></div>
@@ -401,6 +417,9 @@ export class MimirExplorer {
                             <button id="mimir-filter-toggle" class="mimir-icon-btn" title="${this.t('filters')}">
                                 ${ICONS.filter}
                             </button>
+                            <button id="mimir-region-toggle" class="mimir-icon-btn mimir-hidden" title="${this.t('focus_region')}">
+                                ${ICONS.eyeSpark}
+                            </button>
                         </div>
                         <div class="mimir-bottom-group mimir-bottom-center">
                             <button id="mimir-play-toggle" class="mimir-icon-btn mimir-hidden" title="${this.t('play_pause')}">
@@ -517,6 +536,11 @@ export class MimirExplorer {
             info: this.container.querySelector('#mimir-info'),
             infoClose: this.container.querySelector('#mimir-info-close'),
             osd: this.container.querySelector('#mimir-osd'),
+            regionBlur: this.container.querySelector('#mimir-region-blur'),
+            regionBlurTop: this.container.querySelector('#mimir-region-blur .mimir-region-top'),
+            regionBlurLeft: this.container.querySelector('#mimir-region-blur .mimir-region-left'),
+            regionBlurRight: this.container.querySelector('#mimir-region-blur .mimir-region-right'),
+            regionBlurBottom: this.container.querySelector('#mimir-region-blur .mimir-region-bottom'),
             fulltextLayer: this.container.querySelector('#mimir-fulltext-layer'),
             annotationsLayer: this.container.querySelector('#mimir-annotations-layer'),
             av: this.container.querySelector('#mimir-av'),
@@ -595,6 +619,7 @@ export class MimirExplorer {
                 muteToggle: this.container.querySelector('#mimir-mute-toggle'),
                 avEnlarge: this.container.querySelector('#mimir-av-enlarge'),
                 filterToggle: this.container.querySelector('#mimir-filter-toggle'),
+                regionToggle: this.container.querySelector('#mimir-region-toggle'),
                 rotateCcw: this.container.querySelector('#mimir-rotate-ccw'),
                 rotateCw: this.container.querySelector('#mimir-rotate-cw'),
                 flipH: this.container.querySelector('#mimir-flip-h'),
@@ -981,7 +1006,20 @@ export class MimirExplorer {
                 background-position: center;
             }
             .mimir-thumb-placeholder {
-                display: inline-block;
+                width: 2.8rem;
+                height: 3.8rem;
+                border-radius: 0.5rem;
+                border: 1px solid rgba(17,17,17,0.08);
+                background: #eceff3;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: #9ca3af;
+            }
+            #mimir-root.mimir-dark .mimir-thumb-placeholder {
+                background: #1d2026;
+                border-color: rgba(255,255,255,0.12);
+                color: #6b7280;
             }
             .mimir-chip {
                 display: inline-flex;
@@ -1120,6 +1158,21 @@ export class MimirExplorer {
                 inset: 0;
                 z-index: 19;
                 pointer-events: none;
+            }
+            .mimir-region-blur {
+                position: absolute;
+                inset: 0;
+                z-index: 18;
+                pointer-events: none;
+            }
+            .mimir-region-blur-pane {
+                position: absolute;
+                backdrop-filter: blur(6px);
+                -webkit-backdrop-filter: blur(6px);
+                background: rgba(17,17,17,0.12);
+            }
+            #mimir-root.mimir-dark .mimir-region-blur-pane {
+                background: rgba(0,0,0,0.35);
             }
             .mimir-anno-box {
                 position: absolute;
@@ -1526,6 +1579,24 @@ export class MimirExplorer {
             .mimir-av-wrapper { position: relative; width: 100%; height: 100%; display: grid; place-items: center; }
             .mimir-av-media { max-width: 80%; max-height: 80%; outline: none; transition: all 0.3s ease; transform-origin: center; }
             .mimir-av-media.mimir-av-full { width: 100%; height: 100%; max-width: 100%; max-height: 100%; border-radius: 0; object-fit: contain; }
+            .mimir-av-placeholder {
+                position: absolute;
+                inset: 0;
+                display: grid;
+                place-items: center;
+                background: rgba(17,17,17,0.03);
+                z-index: 1;
+            }
+            .mimir-av-placeholder img {
+                max-width: 80%;
+                max-height: 80%;
+                border-radius: 1rem;
+                object-fit: contain;
+                box-shadow: 0 20px 40px rgba(0,0,0,0.12);
+            }
+            .mimir-av-placeholder.mimir-hidden {
+                display: none;
+            }
             .mimir-zoom { position: relative; }
             .mimir-zoom-pop {
                 position: absolute;
@@ -1690,6 +1761,21 @@ export class MimirExplorer {
                 border-radius: 50%; margin-top: -4px; transition: transform 0.2s;
             }
             .mimir-range:hover::-webkit-slider-thumb { transform: scale(1.2); }
+            .mimir-range::-moz-range-track {
+                background: rgba(var(--mimir-primary-rgb), 0.2);
+                height: 4px;
+                border-radius: 2px;
+                border: none;
+            }
+            .mimir-range::-moz-range-thumb {
+                background: var(--mimir-primary);
+                height: 12px;
+                width: 12px;
+                border-radius: 50%;
+                border: none;
+                transition: transform 0.2s;
+            }
+            .mimir-range:hover::-moz-range-thumb { transform: scale(1.2); }
 
             .mimir-format-tag {
                 padding: 0.25rem 0.5rem; border-radius: 0.5rem;
@@ -2041,6 +2127,17 @@ export class MimirExplorer {
         };
 
         this.els.btns.filterToggle.onclick = () => this.setFilterOpen(!this.filterOpen);
+        if (this.els.btns.regionToggle) {
+            this.els.btns.regionToggle.onclick = () => {
+                this.regionBlurEnabled = !this.regionBlurEnabled;
+                this.updateRegionToggleUI();
+                if (!this.regionBlurEnabled) {
+                    this.hideRegionBlur();
+                } else {
+                    this.updateRegionBlurOverlay();
+                }
+            };
+        }
         if (this.els.btns.threeToggle) {
             this.els.btns.threeToggle.onclick = () => this.setThreeFilterOpen(!this.threeFilterOpen);
         }
@@ -2274,17 +2371,52 @@ export class MimirExplorer {
         if (this.els.btns.flipV) this.els.btns.flipV.classList.toggle('mimir-filter-active', !!flipV);
     }
 
-    resolveThumb(value) {
+    resolveThumb(value, targetSize = 120) {
         if (!value) return null;
-        if (typeof value === 'string') return this.buildThumbUrl(value);
-        if (Array.isArray(value)) return this.resolveThumb(value[0]);
-        const id = value.id || value['@id'] || value.url;
-        if (id) return this.buildThumbUrl(id);
-        const service = value.service || value.services;
-        if (service) {
+        const pickBest = (candidates) => {
+            if (!candidates.length) return null;
+            const withSize = candidates.filter(c => Number.isFinite(c.width));
+            if (withSize.length) {
+                const bigger = withSize.filter(c => c.width >= targetSize).sort((a, b) => a.width - b.width);
+                if (bigger.length) return bigger[0].url;
+                return withSize.sort((a, b) => b.width - a.width)[0].url;
+            }
+            return candidates[0].url;
+        };
+        if (Array.isArray(value)) {
+            const candidates = value.map(v => this.resolveThumbCandidate(v, targetSize)).filter(Boolean);
+            return pickBest(candidates);
+        }
+        const candidate = this.resolveThumbCandidate(value, targetSize);
+        return candidate?.url || null;
+    }
+
+    resolveThumbCandidate(value, targetSize = 120) {
+        if (!value) return null;
+        const buildFromService = (service, size) => {
+            if (!service) return null;
             const svc = Array.isArray(service) ? service[0] : service;
             const svcId = svc?.id || svc?.['@id'];
-            if (svcId) return this.buildThumbUrl(svcId);
+            if (!svcId) return null;
+            if (size?.width && size?.height) return `${svcId}/full/${size.width},${size.height}/0/default.jpg`;
+            return this.buildThumbUrl(svcId);
+        };
+        if (typeof value === 'string') return { url: this.buildThumbUrl(value) };
+        const id = value.id || value['@id'] || value.url;
+        const width = value.width;
+        const height = value.height;
+        const service = value.service || value.services;
+        const sizes = (service && (Array.isArray(service) ? service[0]?.sizes : service?.sizes)) || value.sizes;
+        if (sizes?.length && service) {
+            const sorted = [...sizes].filter(s => s?.width).sort((a, b) => a.width - b.width);
+            const pick = sorted.find(s => s.width >= targetSize) || sorted[sorted.length - 1];
+            const url = buildFromService(service, pick);
+            if (url) return { url, width: pick.width, height: pick.height };
+        }
+        if (id) return { url: this.buildThumbUrl(id), width, height };
+        if (service) {
+            const url = buildFromService(service);
+            if (url) return { url, width, height };
         }
         return null;
     }
@@ -2768,6 +2900,113 @@ export class MimirExplorer {
         return { x, y, z };
     }
 
+    parseImageApiRegion(region, imageW, imageH) {
+        if (!region || typeof region !== 'string') return null;
+        let raw = region.trim();
+        let isPct = false;
+        if (raw.startsWith('pct:')) {
+            isPct = true;
+            raw = raw.slice(4);
+        }
+        const nums = raw.split(',').map(Number);
+        if (nums.length !== 4 || nums.some(n => !Number.isFinite(n))) return null;
+        let [x, y, w, h] = nums;
+        if (isPct) {
+            if (!Number.isFinite(imageW) || !Number.isFinite(imageH) || imageW <= 0 || imageH <= 0) return null;
+            x = imageW * (x / 100);
+            y = imageH * (y / 100);
+            w = imageW * (w / 100);
+            h = imageH * (h / 100);
+        }
+        return { x, y, w, h };
+    }
+
+    extractImageApiRegion(body) {
+        const asArray = (val) => (Array.isArray(val) ? val : (val ? [val] : []));
+        const getType = (obj) => (obj && (obj.type || obj['@type'])) || '';
+        const bodies = asArray(body);
+        for (const b of bodies) {
+            if (!b) continue;
+            const type = getType(b);
+            if (type === 'SpecificResource') {
+                const selectors = asArray(b.selector || b.selectors);
+                const source = b.source || b.resource || null;
+                const imageW = source?.width;
+                const imageH = source?.height;
+                for (const sel of selectors) {
+                    const selType = String(sel?.type || sel?.['@type'] || '').toLowerCase();
+                    if (!selType.includes('imageapiselector')) continue;
+                    const region = this.parseImageApiRegion(sel?.region, imageW, imageH);
+                    if (region) return region;
+                }
+                if (source) {
+                    const nested = this.extractImageApiRegion(source);
+                    if (nested) return nested;
+                }
+            }
+        }
+        return null;
+    }
+
+    buildMissingSvg({ width = 800, height = 1000, label = 'Missing image', message = '', iconSvg = '' } = {}) {
+        const w = Number.isFinite(width) ? width : 800;
+        const h = Number.isFinite(height) ? height : 1000;
+        const safeLabel = String(label || '').slice(0, 120);
+        const safeMessage = String(message || '').slice(0, 220);
+        const esc = (str) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const title = esc(safeLabel);
+        const body = esc(safeMessage);
+        const icon = String(iconSvg || '')
+            .replace(/<svg/, '<svg fill="#7b8191"')
+            .replace(/width=\"[^\"]*\"/g, '')
+            .replace(/height=\"[^\"]*\"/g, '')
+            .replace(/class=\"mimir-icon\"/g, '')
+            .trim();
+        const iconSize = Math.max(36, Math.min(96, w * 0.14));
+        const iconX = (w - iconSize) / 2;
+        const iconY = h * 0.22;
+        const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#f4f4f6"/>
+      <stop offset="100%" stop-color="#e8e8ee"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="${w}" height="${h}" fill="url(#bg)" stroke="#c7c7d1" stroke-width="8"/>
+  <rect x="${w * 0.08}" y="${h * 0.08}" width="${w * 0.84}" height="${h * 0.84}" fill="none" stroke="#d0d0da" stroke-width="4" stroke-dasharray="14 10" rx="24"/>
+  ${icon ? `<g transform="translate(${iconX} ${iconY}) scale(${iconSize / 24})">${icon}</g>` : ''}
+  <text x="${w / 2}" y="${h * 0.42}" text-anchor="middle" font-size="${Math.max(18, Math.min(48, w * 0.06))}" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI" fill="#4b4b57" font-weight="700">${title}</text>
+  ${body ? `<text x="${w / 2}" y="${h * 0.52}" text-anchor="middle" font-size="${Math.max(14, Math.min(30, w * 0.04))}" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI" fill="#6b6b78">${body}</text>` : ''}
+  <text x="${w / 2}" y="${h * 0.64}" text-anchor="middle" font-size="${Math.max(12, Math.min(24, w * 0.035))}" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI" fill="#8a8a96">${this.t('image_unavailable')}</text>
+</svg>`;
+        return svg;
+    }
+
+    buildMissingTileSource(canvas) {
+        const label = canvas?.label || 'Missing image';
+        const description = canvas?.metadata?.find(m => /description/i.test(m.label || ''))?.value || '';
+        const svg = this.buildMissingSvg({
+            width: canvas?.width || 1200,
+            height: canvas?.height || 1600,
+            label,
+            message: description,
+            iconSvg: ''
+        });
+        let url = '';
+        try {
+            if (typeof Blob !== 'undefined' && typeof URL !== 'undefined') {
+                const blob = new Blob([svg], { type: 'image/svg+xml' });
+                url = URL.createObjectURL(blob);
+                this.missingObjectUrls.push(url);
+            }
+        } catch {
+            // ignore
+        }
+        if (!url) url = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+        return { type: 'image', url, placeholder: true, buildPyramid: false };
+    }
+
     detectType(manifest, parsed) {
         const mType = (manifest.type || manifest['@type'] || '').toLowerCase();
         if (mType.includes('collection')) return 'collection';
@@ -2803,6 +3042,12 @@ export class MimirExplorer {
         this.els.avControls.classList.toggle('mimir-hidden', type !== 'av');
         this.els.avAudio.classList.toggle('mimir-hidden', type !== 'av');
         this.els.imageControls.classList.toggle('mimir-hidden', type !== 'image');
+        if (type !== 'image') {
+            this.currentRegion = null;
+            this.hasRegion = false;
+            this.updateRegionToggleUI();
+            this.hideRegionBlur();
+        }
         
         this.els.btns.zoom.classList.toggle('mimir-hidden', type !== 'image' && type !== 'av' && type !== '3d');
         this.els.btns.filterToggle.classList.toggle('mimir-hidden', type !== 'image' && type !== 'av');
@@ -2820,6 +3065,17 @@ export class MimirExplorer {
             } else {
                 this.isBookMode = false;
                 this.isContinuousMode = false;
+            }
+        }
+        if (type === 'image') {
+            this.pendingStartPage = null;
+            const startIdx = parsed?.startCanvasIndex;
+            if (Number.isInteger(startIdx)) {
+                if (this.isBookMode) {
+                    this.bookPageIndex = startIdx <= 0 ? 0 : Math.floor((startIdx - 1) / 2) + 1;
+                } else {
+                    this.pendingStartPage = startIdx;
+                }
             }
         }
         if (this.updateNavHandlers) this.updateNavHandlers();
@@ -2846,7 +3102,19 @@ export class MimirExplorer {
         this.els.osd.classList.remove('mimir-hidden'); this.showToolbar(true);
         if (this.els.fulltextLayer) this.els.fulltextLayer.classList.remove('mimir-hidden');
         if (this.els.annotationsLayer) this.els.annotationsLayer.classList.remove('mimir-hidden');
-        this.tileSources = parsed?.imageSources?.length ? parsed.imageSources : [];
+        this.hasRegion = false;
+        this.currentRegion = null;
+        this.updateRegionToggleUI();
+        this.missingPageIndexes = new Set();
+        const canvases = parsed?.canvases || [];
+        this.tileSources = canvases.length
+            ? canvases.map((canvas, idx) => {
+                const source = canvas?.imageSources?.[0];
+                if (source) return source;
+                this.missingPageIndexes.add(idx);
+                return this.buildMissingTileSource(canvas);
+            })
+            : [];
         if (this.els.btns.continuousToggle) {
             const allowContinuous = !!(parsed?.behavior?.includes('continuous')) && this.tileSources.length > 1;
             this.els.btns.continuousToggle.classList.toggle('mimir-hidden', !allowContinuous);
@@ -2861,12 +3129,7 @@ export class MimirExplorer {
         this.updateBottomDividers();
         if (this.osdExplorer) this.osdExplorer.destroy();
         if (this.tileSources.length === 0) { this.showMessage(this.t('no_image_services')); this.showToolbar(true); return; }
-        const normalizeTileSource = (src) => {
-            if (!src) return src;
-            if (typeof src === 'string') return src;
-            if (src.url) return src.url;
-            return src;
-        };
+        const normalizeTileSource = (src) => src;
         let finalSources = this.tileSources;
         if (this.isContinuousMode) {
             const gap = 0;
@@ -2896,6 +3159,12 @@ export class MimirExplorer {
                 width: 1
             }));
         }
+        const isSafari = (() => {
+            const ua = navigator?.userAgent || '';
+            const isWebkit = /Safari/i.test(ua) && !/Chrome|Chromium|Edg/i.test(ua);
+            const isAppleMobile = /iPad|iPhone|iPod/i.test(ua);
+            return isWebkit || isAppleMobile;
+        })();
         const supportsWebGL = (() => {
             try {
                 const canvas = document.createElement('canvas');
@@ -2903,7 +3172,7 @@ export class MimirExplorer {
             } catch {
                 return false;
             }
-        })();
+        })() && !isSafari;
         this.osdExplorer = OpenSeadragon({
             element: this.els.osd, tileSources: finalSources, sequenceMode: !this.isBookMode && !this.isContinuousMode,
             showNavigationControl: false, showSequenceControl: false, prefixUrl: "",
@@ -2912,17 +3181,42 @@ export class MimirExplorer {
             drawer: supportsWebGL ? ['webgl', 'canvas'] : ['canvas']
         });
         this.osdExplorer.addHandler('open', () => {
+            const goToIndex = (idx) => {
+                if (!Number.isFinite(idx)) return false;
+                if (this.isBookMode) {
+                    this.bookPageIndex = idx <= 0 ? 0 : Math.floor((idx - 1) / 2) + 1;
+                    this.goToBookPage(this.bookPageIndex, true);
+                    this.bookCenterNeedsFit = true;
+                    this.centerBookSpread(true);
+                    return true;
+                }
+                if (this.isContinuousMode) {
+                    const item = this.osdExplorer?.world?.getItemAt?.(idx);
+                    if (item) this.osdExplorer.viewport.fitBounds(item.getBounds(), true);
+                    return true;
+                }
+                this.osdExplorer.goToPage(idx);
+                return true;
+            };
+            let didGo = false;
             if (Number.isFinite(this.pendingBookmarkPage)) {
-                this.osdExplorer.goToPage(this.pendingBookmarkPage);
+                didGo = goToIndex(this.pendingBookmarkPage);
                 this.pendingBookmarkPage = null;
+            } else if (Number.isFinite(this.pendingStartPage)) {
+                didGo = goToIndex(this.pendingStartPage);
+                this.pendingStartPage = null;
             }
             this.scheduleOverlayUpdate();
             if (this.isBookMode) {
-                this.goToBookPage(this.bookPageIndex, true);
-                this.bookCenterNeedsFit = true;
-                this.centerBookSpread(true);
+                if (!didGo) {
+                    this.goToBookPage(this.bookPageIndex, true);
+                    this.bookCenterNeedsFit = true;
+                    this.centerBookSpread(true);
+                }
             } else if (this.isContinuousMode) {
-                this.centerContinuous();
+                if (!didGo) this.centerContinuous();
+            } else if (!didGo) {
+                this.applyRegionForPage(this.osdExplorer.currentPage?.() ?? 0);
             }
         });
         this.osdExplorer.addHandler('tile-loaded', () => {
@@ -2930,6 +3224,9 @@ export class MimirExplorer {
         });
         this.osdExplorer.addHandler('tile-loaded', () => {
             if (this.isBookMode) this.centerBookSpread();
+        });
+        this.osdExplorer.addHandler('tile-loaded', () => {
+            if (!this.isBookMode && !this.isContinuousMode) this.applyRegionForPage(this.osdExplorer.currentPage?.() ?? 0);
         });
         this.osdExplorer.addHandler('animation', () => { this.scheduleOverlayUpdate(); });
         this.osdExplorer.addHandler('resize', () => { this.scheduleOverlayUpdate(); });
@@ -2951,6 +3248,7 @@ export class MimirExplorer {
         const pageIndex = this.isBookMode ? (this.bookPageIndex <= 0 ? 0 : this.bookPageIndex * 2 - 1) : Math.max(0, this.osdExplorer?.currentPage?.() || 0);
         const infoUrl = this.tileSources[Math.max(0, pageIndex)] || this.tileSources[0];
         if (!infoUrl) return;
+        if (this.missingPageIndexes?.has(pageIndex)) return;
         const base = infoUrl.endsWith('/info.json') ? infoUrl.slice(0, -10) : infoUrl;
         const url = `${base}/full/full/0/default.jpg`;
         const link = document.createElement('a');
@@ -2989,6 +3287,119 @@ export class MimirExplorer {
         this.updateAnnotationsPanel(osdPageIndex);
         this.updateFulltextPanel(osdPageIndex);
         this.updateBookmarkButton();
+        this.applyRegionForPage(osdPageIndex);
+    }
+
+    applyRegionForPage(pageIndex) {
+        if (this.isBookMode || this.isContinuousMode) {
+            this.currentRegion = null;
+            this.hasRegion = false;
+            this.updateRegionToggleUI();
+            this.hideRegionBlur();
+            return;
+        }
+        if (!this.osdExplorer || !this.currentParsed?.canvases?.length) {
+            this.currentRegion = null;
+            this.hasRegion = false;
+            this.updateRegionToggleUI();
+            this.hideRegionBlur();
+            return;
+        }
+        const canvas = this.currentParsed.canvases[pageIndex];
+        const region = canvas?.region;
+        this.currentRegion = region || null;
+        this.hasRegion = !!region;
+        this.updateRegionToggleUI();
+        if (!region) {
+            this.hideRegionBlur();
+            return;
+        }
+        if (this.regionBlurEnabled) {
+            const item = this.osdExplorer.world?.getItemAt?.(pageIndex);
+            if (item && item.imageToViewportRectangle) {
+                const rect = item.imageToViewportRectangle(region.x, region.y, region.w, region.h);
+                if (rect) this.osdExplorer.viewport.fitBounds(rect, true);
+            }
+            this.updateRegionBlurOverlay();
+        } else {
+            this.hideRegionBlur();
+        }
+    }
+
+    updateRegionToggleUI() {
+        if (!this.els.btns.regionToggle) return;
+        const show = this.hasRegion && !this.isBookMode && !this.isContinuousMode;
+        this.els.btns.regionToggle.classList.toggle('mimir-hidden', !show);
+        if (!show) return;
+        this.els.btns.regionToggle.style.color = this.regionBlurEnabled ? 'var(--mimir-primary)' : '';
+        this.els.btns.regionToggle.classList.toggle('mimir-filter-active', this.regionBlurEnabled);
+        this.els.btns.regionToggle.title = this.regionBlurEnabled ? this.t('show_full_image') : this.t('focus_region');
+    }
+
+    hideRegionBlur() {
+        if (this.els.regionBlur) this.els.regionBlur.classList.add('mimir-hidden');
+    }
+
+    updateRegionBlurOverlay() {
+        if (!this.els.regionBlur || !this.regionBlurEnabled || !this.currentRegion) {
+            this.hideRegionBlur();
+            return;
+        }
+        if (this.isBookMode || this.isContinuousMode) {
+            this.hideRegionBlur();
+            return;
+        }
+        const pageIndex = this.osdExplorer?.currentPage?.() ?? 0;
+        const item = this.osdExplorer?.world?.getItemAt?.(pageIndex);
+        if (!item || !item.imageToViewportRectangle) {
+            this.hideRegionBlur();
+            return;
+        }
+        const rect = item.imageToViewportRectangle(this.currentRegion.x, this.currentRegion.y, this.currentRegion.w, this.currentRegion.h);
+        if (!rect) {
+            this.hideRegionBlur();
+            return;
+        }
+        const viewerRect = this.osdExplorer.viewport.viewportToViewerElementRectangle(rect);
+        if (!viewerRect) {
+            this.hideRegionBlur();
+            return;
+        }
+        const w = this.els.osd?.clientWidth || 0;
+        const h = this.els.osd?.clientHeight || 0;
+        const x = Math.max(0, Math.min(w, viewerRect.x));
+        const y = Math.max(0, Math.min(h, viewerRect.y));
+        const rw = Math.max(0, Math.min(w - x, viewerRect.width));
+        const rh = Math.max(0, Math.min(h - y, viewerRect.height));
+        if (rw <= 0 || rh <= 0) {
+            this.hideRegionBlur();
+            return;
+        }
+        this.els.regionBlur.classList.remove('mimir-hidden');
+        if (this.els.regionBlurTop) {
+            this.els.regionBlurTop.style.left = '0px';
+            this.els.regionBlurTop.style.top = '0px';
+            this.els.regionBlurTop.style.width = `${w}px`;
+            this.els.regionBlurTop.style.height = `${y}px`;
+        }
+        if (this.els.regionBlurLeft) {
+            this.els.regionBlurLeft.style.left = '0px';
+            this.els.regionBlurLeft.style.top = `${y}px`;
+            this.els.regionBlurLeft.style.width = `${x}px`;
+            this.els.regionBlurLeft.style.height = `${rh}px`;
+        }
+        if (this.els.regionBlurRight) {
+            this.els.regionBlurRight.style.left = `${x + rw}px`;
+            this.els.regionBlurRight.style.top = `${y}px`;
+            this.els.regionBlurRight.style.width = `${Math.max(0, w - (x + rw))}px`;
+            this.els.regionBlurRight.style.height = `${rh}px`;
+        }
+        if (this.els.regionBlurBottom) {
+            this.els.regionBlurBottom.style.left = '0px';
+            this.els.regionBlurBottom.style.top = `${y + rh}px`;
+            this.els.regionBlurBottom.style.width = `${w}px`;
+            this.els.regionBlurBottom.style.height = `${Math.max(0, h - (y + rh))}px`;
+        }
     }
 
     goToBookPage(index, skipHome = false) {
@@ -3643,6 +4054,7 @@ export class MimirExplorer {
         requestAnimationFrame(() => {
             this.updateAnnotationOverlays();
             this.updateFulltextOverlays();
+            this.updateRegionBlurOverlay();
             this.overlayUpdatePending = false;
         });
     }
@@ -3992,7 +4404,7 @@ export class MimirExplorer {
                 const thumb = this.resolveThumb(source);
                 const thumbHtml = thumb
                     ? `<img class="mimir-thumb" src="${thumb}" alt="">`
-                    : `<span class="mimir-thumb mimir-thumb-placeholder"></span>`;
+                    : `<span class="mimir-thumb-placeholder">${ICONS.fileUnknown}</span>`;
                 itemsHtml += `<button data-mimir-canvas="${idx}" class="mimir-list-btn">
                     <span class="mimir-list-row">
                         ${thumbHtml}
@@ -4186,6 +4598,18 @@ export class MimirExplorer {
             const wrapper = document.createElement('div');
             wrapper.className = 'mimir-av-wrapper';
 
+            const canvasId = current?.canvasId;
+            const canvasRef = canvasId ? parsed?.canvases?.find(c => c.id === canvasId) : null;
+            const placeholderUrl = canvasRef?.placeholderImage || null;
+            const accompanyingUrl = canvasRef?.accompanyingImage || null;
+            let placeholderEl = null;
+            if (placeholderUrl && mediaType === 'video') {
+                placeholderEl = document.createElement('div');
+                placeholderEl.className = 'mimir-av-placeholder';
+                placeholderEl.innerHTML = `<img src="${placeholderUrl}" alt="">`;
+                wrapper.appendChild(placeholderEl);
+            }
+
             const el = document.createElement(mediaType);
             el.crossOrigin = 'anonymous';
             el.src = mediaUrl;
@@ -4194,11 +4618,22 @@ export class MimirExplorer {
             el.controls = false;
             el.muted = false;
             el.volume = 1;
+            el.playsInline = true;
             const zoomValue = Number(this.els.zoomSlider?.value || 1);
             el.style.transform = `scale(${zoomValue})`;
+            const hidePlaceholder = () => {
+                if (placeholderEl) placeholderEl.classList.add('mimir-hidden');
+            };
 
-            el.onplay = () => { this.els.iconPlay.classList.add('mimir-hidden'); this.els.iconPause.classList.remove('mimir-hidden'); };
-            el.onpause = () => { this.els.iconPlay.classList.remove('mimir-hidden'); this.els.iconPause.classList.add('mimir-hidden'); };
+            const setPlayingUI = (playing) => {
+                if (!this.els.iconPlay || !this.els.iconPause) return;
+                this.els.iconPlay.classList.toggle('mimir-hidden', playing);
+                this.els.iconPause.classList.toggle('mimir-hidden', !playing);
+            };
+            el.onplay = () => setPlayingUI(true);
+            el.onplaying = () => setPlayingUI(true);
+            el.onpause = () => setPlayingUI(false);
+            el.onended = () => setPlayingUI(false);
             el.ontimeupdate = () => {
                 if (!this.els.avProgress) return;
                 this.els.avProgress.value = el.currentTime;
@@ -4207,8 +4642,31 @@ export class MimirExplorer {
             el.onloadedmetadata = () => {
                 this.els.avProgress.max = el.duration;
                 this.els.avTotal.innerText = this.formatTime(el.duration);
+                if (Number.isFinite(parsed?.startTime) && current?.canvasId && parsed?.startCanvasId === current.canvasId) {
+                    try { el.currentTime = parsed.startTime; } catch {}
+                }
+                hidePlaceholder();
             };
+            el.oncanplay = hidePlaceholder;
+            el.onloadeddata = hidePlaceholder;
             wrapper.appendChild(el);
+            try {
+                const playPromise = el.play();
+                if (playPromise?.then) {
+                    playPromise.then(() => setPlayingUI(true)).catch(() => setPlayingUI(false));
+                } else {
+                    setPlayingUI(!el.paused);
+                }
+            } catch {
+                setPlayingUI(!el.paused);
+            }
+
+            if (mediaType === 'audio' && accompanyingUrl) {
+                const still = document.createElement('div');
+                still.className = 'mimir-av-placeholder';
+                still.innerHTML = `<img src="${accompanyingUrl}" alt="">`;
+                wrapper.appendChild(still);
+            }
 
             if (mediaType === 'audio') {
                 const eq = document.createElement('div');
@@ -4478,6 +4936,8 @@ export class MimirExplorer {
                 add_bookmark: 'Add Bookmark',
                 zoom: 'Zoom',
                 filters: 'Filters',
+                focus_region: 'Focus region',
+                show_full_image: 'Show full image',
                 three_d_controls: '3D Controls',
                 play_pause: 'Play/Pause',
                 back_30: 'Back 30s',
@@ -4524,6 +4984,7 @@ export class MimirExplorer {
                 bookmarks_hint: 'Bookmarks will appear here.',
                 no_bookmarks: 'No bookmarks saved.',
                 no_image_services: 'No image services found.',
+                image_unavailable: 'Image unavailable',
                 no_av_items: 'No audio/video items found.',
                 segments: 'Segments',
                 models: 'Models',
@@ -4571,6 +5032,8 @@ export class MimirExplorer {
                 add_bookmark: 'Lesezeichen hinzufügen',
                 zoom: 'Zoom',
                 filters: 'Filter',
+                focus_region: 'Fokus auf Bereich',
+                show_full_image: 'Ganzes Bild anzeigen',
                 three_d_controls: '3D-Steuerung',
                 play_pause: 'Abspielen/Pause',
                 back_30: '30s zurück',
@@ -4617,6 +5080,7 @@ export class MimirExplorer {
                 bookmarks_hint: 'Lesezeichen erscheinen hier.',
                 no_bookmarks: 'Keine Lesezeichen gespeichert.',
                 no_image_services: 'Keine Bilddienste gefunden.',
+                image_unavailable: 'Bild nicht verfügbar',
                 no_av_items: 'Keine Audio/Video-Elemente gefunden.',
                 segments: 'Segmente',
                 models: 'Modelle',
@@ -4664,6 +5128,8 @@ export class MimirExplorer {
                 add_bookmark: 'Ajouter un signet',
                 zoom: 'Zoom',
                 filters: 'Filtres',
+                focus_region: 'Zone focus',
+                show_full_image: 'Afficher l’image entière',
                 three_d_controls: 'Contrôles 3D',
                 play_pause: 'Lecture/Pause',
                 back_30: 'Retour 30 s',
@@ -4710,6 +5176,7 @@ export class MimirExplorer {
                 bookmarks_hint: 'Les signets apparaîtront ici.',
                 no_bookmarks: 'Aucun signet enregistré.',
                 no_image_services: 'Aucun service d’images trouvé.',
+                image_unavailable: 'Image indisponible',
                 no_av_items: 'Aucun élément audio/vidéo trouvé.',
                 segments: 'Segments',
                 models: 'Modèles',
@@ -4757,6 +5224,8 @@ export class MimirExplorer {
                 add_bookmark: 'Aggiungi segnalibro',
                 zoom: 'Zoom',
                 filters: 'Filtri',
+                focus_region: 'Metti a fuoco area',
+                show_full_image: 'Mostra immagine intera',
                 three_d_controls: 'Controlli 3D',
                 play_pause: 'Play/Pausa',
                 back_30: 'Indietro 30 s',
@@ -4803,6 +5272,7 @@ export class MimirExplorer {
                 bookmarks_hint: 'I segnalibri appariranno qui.',
                 no_bookmarks: 'Nessun segnalibro salvato.',
                 no_image_services: 'Nessun servizio immagini trovato.',
+                image_unavailable: 'Immagine non disponibile',
                 no_av_items: 'Nessun elemento audio/video trovato.',
                 segments: 'Segmenti',
                 models: 'Modelli',
@@ -4850,6 +5320,8 @@ export class MimirExplorer {
                 add_bookmark: 'Añadir marcador',
                 zoom: 'Zoom',
                 filters: 'Filtros',
+                focus_region: 'Enfocar región',
+                show_full_image: 'Mostrar imagen completa',
                 three_d_controls: 'Controles 3D',
                 play_pause: 'Reproducir/Pausa',
                 back_30: 'Atrás 30 s',
@@ -4896,6 +5368,7 @@ export class MimirExplorer {
                 bookmarks_hint: 'Los marcadores aparecerán aquí.',
                 no_bookmarks: 'No hay marcadores guardados.',
                 no_image_services: 'No se encontraron servicios de imagen.',
+                image_unavailable: 'Imagen no disponible',
                 no_av_items: 'No se encontraron elementos de audio/vídeo.',
                 segments: 'Segmentos',
                 models: 'Modelos',
@@ -4943,6 +5416,8 @@ export class MimirExplorer {
                 add_bookmark: 'Bladwijzer toevoegen',
                 zoom: 'Zoom',
                 filters: 'Filters',
+                focus_region: 'Regio focussen',
+                show_full_image: 'Toon volledige afbeelding',
                 three_d_controls: '3D-bediening',
                 play_pause: 'Afspelen/Pauze',
                 back_30: '30 s terug',
@@ -4989,6 +5464,7 @@ export class MimirExplorer {
                 bookmarks_hint: 'Bladwijzers verschijnen hier.',
                 no_bookmarks: 'Geen bladwijzers opgeslagen.',
                 no_image_services: 'Geen afbeeldingsdiensten gevonden.',
+                image_unavailable: 'Afbeelding niet beschikbaar',
                 no_av_items: 'Geen audio-/video-items gevonden.',
                 segments: 'Segmenten',
                 models: 'Modellen',
@@ -5234,6 +5710,7 @@ export class MimirExplorer {
         if (emptySub) emptySub.textContent = this.t('load_manifest');
         const loaderText = this.els.loader?.querySelector('.mimir-loader-text');
         if (loaderText) loaderText.textContent = this.t('loading_manifest');
+        this.updateRegionToggleUI();
     }
 
     refreshLanguageUI() {
@@ -5453,11 +5930,16 @@ export class MimirExplorer {
                 const serviceId = extractImageServiceId(b.service || b.services);
                 if (serviceId) imageSources.push(serviceId);
                 else if (format.startsWith('image/') && id) imageSources.push({ type: 'image', url: id });
-                if ((type === 'Video' || format.startsWith('video/')) && id) {
-                    avItems.push({ id, mediaType: 'video', label: getLabel(b.label) });
-                }
-                if ((type === 'Sound' || format.startsWith('audio/')) && id) {
-                    avItems.push({ id, mediaType: 'audio', label: getLabel(b.label) });
+                if (id) {
+                    if (type === 'Sound') {
+                        avItems.push({ id, mediaType: 'audio', label: getLabel(b.label) });
+                    } else if (type === 'Video') {
+                        avItems.push({ id, mediaType: 'video', label: getLabel(b.label) });
+                    } else if (format.startsWith('audio/')) {
+                        avItems.push({ id, mediaType: 'audio', label: getLabel(b.label) });
+                    } else if (format.startsWith('video/')) {
+                        avItems.push({ id, mediaType: 'video', label: getLabel(b.label) });
+                    }
                 }
                 if ((type === 'Model' || format.includes('gltf') || (typeof id === 'string' && (id.endsWith('.glb') || id.endsWith('.gltf')))) && id) {
                     modelItems.push({ id, label: getLabel(b.label) });
@@ -5479,6 +5961,60 @@ export class MimirExplorer {
             const avItems = [];
             const modelItems = [];
             const cameraItems = [];
+            let region = null;
+            const metadata = asArray(canvas.metadata).map(m => ({
+                label: getLabel(m.label),
+                value: getLabel(m.value)
+            })).filter(m => m.label || m.value);
+            const placeholderCanvas = canvas.placeholderCanvas;
+            const accompanyingCanvas = canvas.accompanyingCanvas;
+            const resolveImageUrl = (src) => {
+                if (!src) return null;
+                if (typeof src === 'string') {
+                    if (src.endsWith('/info.json')) return `${src.slice(0, -10)}/full/max/0/default.jpg`;
+                    return src;
+                }
+                if (src.url) return src.url;
+                return null;
+            };
+            const extractImageSourcesFromItems = (items) => {
+                const list = [];
+                const annos = [];
+                asArray(items).forEach(entry => {
+                    if (!entry) return;
+                    const type = String(getType(entry)).toLowerCase();
+                    if (type.includes('annotationpage') || entry.items) {
+                        annos.push(...asArray(entry.items));
+                    } else if (type.includes('annotation') || entry.body || entry.resource) {
+                        annos.push(entry);
+                    }
+                });
+                annos.forEach(anno => {
+                    const motivation = anno.motivation || '';
+                    const motivations = Array.isArray(motivation) ? motivation.map(m => String(m).toLowerCase()) : [String(motivation).toLowerCase()];
+                    if (!motivation || motivations.some(m => m.includes('painting'))) {
+                        const parsed = parseBody(anno.body || anno.resource);
+                        list.push(...parsed.imageSources);
+                    }
+                });
+                return list;
+            };
+            let placeholderImage = null;
+            if (placeholderCanvas && typeof placeholderCanvas === 'object') {
+                const placeholderSources = extractImageSourcesFromItems(placeholderCanvas.items || placeholderCanvas.annotations || placeholderCanvas.otherContent);
+                if (placeholderSources.length) {
+                    const src = placeholderSources[0];
+                    placeholderImage = resolveImageUrl(src) || this.resolveThumb(src, 400);
+                }
+            }
+            let accompanyingImage = null;
+            if (accompanyingCanvas && typeof accompanyingCanvas === 'object') {
+                const accompanyingSources = extractImageSourcesFromItems(accompanyingCanvas.items || accompanyingCanvas.annotations || accompanyingCanvas.otherContent);
+                if (accompanyingSources.length) {
+                    const src = accompanyingSources[0];
+                    accompanyingImage = resolveImageUrl(src) || this.resolveThumb(src, 400);
+                }
+            }
             const collectAnnos = (container) => {
                 const list = [];
                 asArray(container).forEach(entry => {
@@ -5503,9 +6039,13 @@ export class MimirExplorer {
                 const motivations = Array.isArray(motivation) ? motivation.map(m => String(m).toLowerCase()) : [String(motivation).toLowerCase()];
                 if (!motivation || motivations.some(m => m.includes('painting'))) {
                     const parsed = parseBody(anno.body || anno.resource);
+                    if (!region) {
+                        const foundRegion = this.extractImageApiRegion(anno.body || anno.resource);
+                        if (foundRegion) region = foundRegion;
+                    }
                     const point = this.extractPointSelector(anno.target || anno.on);
                     imageSources.push(...parsed.imageSources);
-                    avItems.push(...parsed.avItems);
+                    parsed.avItems.forEach(item => avItems.push({ ...item, canvasId: getId(canvas) }));
                     const models = point ? parsed.modelItems.map(m => ({ ...m, position: point })) : parsed.modelItems;
                     modelItems.push(...models);
                     cameraItems.push(...parsed.cameraItems);
@@ -5556,7 +6096,12 @@ export class MimirExplorer {
                 modelItems,
                 cameraItems,
                 thumbnail,
-                annotations
+                annotations,
+                region,
+                metadata,
+                placeholderImage
+                ,
+                accompanyingImage
             };
         };
         const manifestType = getType(manifest).toLowerCase();
@@ -5615,7 +6160,15 @@ export class MimirExplorer {
             v3Canvases.forEach(c => {
                 const parsed = parseCanvas(c, annotationPageRefs, fulltextPageRefs, fulltextSourcesByCanvasId);
                 const idx = canvases.length;
-                canvases.push({ id: parsed.id, label: parsed.label, thumbnail: parsed.thumbnail, imageSources: parsed.imageSources });
+                canvases.push({
+                    id: parsed.id,
+                    label: parsed.label,
+                    thumbnail: parsed.thumbnail,
+                    imageSources: parsed.imageSources,
+                    region: parsed.region,
+                    placeholderImage: parsed.placeholderImage,
+                    accompanyingImage: parsed.accompanyingImage
+                });
                 if (parsed.id) canvasIndexById[parsed.id] = idx;
                 imageSources.push(...parsed.imageSources);
                 avItems.push(...parsed.avItems);
@@ -5635,7 +6188,15 @@ export class MimirExplorer {
             v2Canvases.forEach(c => {
                 const parsed = parseCanvas(c, annotationPageRefs, fulltextPageRefs, fulltextSourcesByCanvasId);
                 const idx = canvases.length;
-                canvases.push({ id: parsed.id, label: parsed.label, thumbnail: parsed.thumbnail, imageSources: parsed.imageSources });
+                canvases.push({
+                    id: parsed.id,
+                    label: parsed.label,
+                    thumbnail: parsed.thumbnail,
+                    imageSources: parsed.imageSources,
+                    region: parsed.region,
+                    placeholderImage: parsed.placeholderImage,
+                    accompanyingImage: parsed.accompanyingImage
+                });
                 if (parsed.id) canvasIndexById[parsed.id] = idx;
                 imageSources.push(...parsed.imageSources);
                 avItems.push(...parsed.avItems);
@@ -5649,6 +6210,29 @@ export class MimirExplorer {
                 });
             });
         }
+
+        const parseStartTime = (selector) => {
+            if (!selector) return null;
+            const sel = Array.isArray(selector) ? selector[0] : selector;
+            const type = String(sel?.type || sel?.['@type'] || '').toLowerCase();
+            if (type.includes('pointselector') && Number.isFinite(Number(sel.t))) return Number(sel.t);
+            const value = sel?.value || sel?.['@value'] || '';
+            const match = String(value).match(/t=([0-9.]+)/);
+            if (match) return Number(match[1]);
+            return null;
+        };
+        const startRef = manifest.start || manifest.startCanvas;
+        let startId = typeof startRef === 'string' ? startRef : getId(startRef);
+        let startTime = null;
+        if (startRef && typeof startRef === 'object') {
+            const source = startRef.source || startRef.item;
+            const tType = String(startRef.type || startRef['@type'] || '').toLowerCase();
+            if (source && (tType.includes('specificresource') || !startId)) {
+                startId = getId(source) || source;
+            }
+            startTime = parseStartTime(startRef.selector || startRef.selectors);
+        }
+        const startCanvasIndex = (startId && canvasIndexById[startId] !== undefined) ? canvasIndexById[startId] : null;
 
         const manifestSeeAlso = extractFulltextSourcesFromSeeAlso(manifest.seeAlso);
         if (manifestSeeAlso.length && canvases.length === 1) {
@@ -5742,7 +6326,10 @@ export class MimirExplorer {
             fulltextPageRefs,
             fulltextSourcesByCanvasId,
             behavior,
-            manifestLanguages
+            manifestLanguages,
+            startCanvasIndex,
+            startCanvasId: startId || null,
+            startTime: Number.isFinite(startTime) ? startTime : null
         };
 
         return parsed;
@@ -5764,6 +6351,14 @@ export class MimirExplorer {
         this.fulltextPageRefs = [];
         if (this.els.fulltextLayer) this.els.fulltextLayer.innerHTML = '';
         if (this.els.annotationsLayer) this.els.annotationsLayer.innerHTML = '';
+        if (this.els.regionBlur) this.els.regionBlur.classList.add('mimir-hidden');
+        if (this.missingObjectUrls?.length) {
+            this.missingObjectUrls.forEach((url) => {
+                try { URL.revokeObjectURL(url); } catch {}
+            });
+            this.missingObjectUrls = [];
+        }
+        this.missingPageIndexes = new Set();
         this.els.root.classList.remove('mimir-ready');
         this.els.btns.sidebarToggle.classList.add('mimir-hidden');
         this.els.btns.infoToggle.classList.add('mimir-hidden');
@@ -5777,6 +6372,9 @@ export class MimirExplorer {
         this.filterOpen = false;
         this.threeFilterOpen = false;
         this.resetFilters();
+        this.currentRegion = null;
+        this.hasRegion = false;
+        this.regionBlurEnabled = true;
         this.setLeftOpen(false);
         this.setRightOpen(false);
     }
