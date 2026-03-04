@@ -204,6 +204,7 @@ export class MimirExplorer {
         this.currentRegion = null;
         this.missingObjectUrls = [];
         this.missingPageIndexes = new Set();
+        this.pendingStartTime = null;
 
         // Apply theme color as CSS variable
         this.container.style.setProperty('--mimir-primary', this.options.primaryColor);
@@ -250,6 +251,17 @@ export class MimirExplorer {
                             </div>
                             <div class="mimir-topbar-actions">
                                 <span class="mimir-divider"></span>
+                                <div id="mimir-sequence" class="mimir-lang mimir-hidden">
+                                    <button id="mimir-sequence-toggle" class="mimir-icon-btn" title="${this.t('sequence')}">
+                                        ${ICONS.stack}
+                                    </button>
+                                    <div id="mimir-sequence-pop" class="mimir-lang-pop mimir-hidden">
+                                        <div class="mimir-lang-section">
+                                            <p class="mimir-meta-title">${this.t('sequence')}</p>
+                                            <select id="mimir-sequence-select" class="mimir-lang-select"></select>
+                                        </div>
+                                    </div>
+                                </div>
                                 <div class="mimir-lang">
                                     <button id="mimir-lang-toggle" class="mimir-icon-btn" title="${this.t('language')}">
                                         ${ICONS.language}
@@ -603,6 +615,10 @@ export class MimirExplorer {
             langPop: this.container.querySelector('#mimir-lang-pop'),
             viewerLangSelect: this.container.querySelector('#mimir-viewer-lang'),
             manifestLangSelect: this.container.querySelector('#mimir-manifest-lang'),
+            sequenceWrap: this.container.querySelector('#mimir-sequence'),
+            sequenceToggle: this.container.querySelector('#mimir-sequence-toggle'),
+            sequencePop: this.container.querySelector('#mimir-sequence-pop'),
+            sequenceSelect: this.container.querySelector('#mimir-sequence-select'),
             dividerRight1: this.container.querySelector('#mimir-divider-right-1'),
             dividerRight2: this.container.querySelector('#mimir-divider-right-2'),
             btns: {
@@ -674,7 +690,17 @@ export class MimirExplorer {
         if (typeof window !== 'undefined') {
             const params = new URLSearchParams(window.location.search);
             const manifestUrl = params.get('manifest');
+            const startPage = params.get('page');
+            const startTime = params.get('time');
             if (manifestUrl) {
+                const pageIdx = Number(startPage);
+                if (Number.isFinite(pageIdx) && pageIdx > 0) {
+                    this.pendingBookmarkPage = Math.max(0, Math.floor(pageIdx - 1));
+                }
+                const timeVal = Number(startTime);
+                if (Number.isFinite(timeVal)) {
+                    this.pendingStartTime = timeVal;
+                }
                 this.loadManifest(manifestUrl);
             }
         }
@@ -1345,6 +1371,16 @@ export class MimirExplorer {
                 border-color: rgba(var(--mimir-primary-rgb), 0.35);
                 background: rgba(var(--mimir-primary-rgb), 0.08);
             }
+            .mimir-outline-item {
+                font-size: 0.75rem;
+                color: #6b7280;
+                padding: 0.25rem 0.6rem 0.25rem 2.1rem;
+                cursor: pointer;
+            }
+            .mimir-outline-item.is-active {
+                color: var(--mimir-primary);
+                font-weight: 600;
+            }
 
             .mimir-bottom-bar {
                 position: absolute; left: 1.5rem; bottom: 1.5rem; z-index: 40;
@@ -1924,6 +1960,12 @@ export class MimirExplorer {
                 border-color: rgba(var(--mimir-primary-rgb), 0.45);
                 background: rgba(var(--mimir-primary-rgb), 0.12);
             }
+            #mimir-root.mimir-dark .mimir-outline-item {
+                color: #94a3b8;
+            }
+            #mimir-root.mimir-dark .mimir-outline-item.is-active {
+                color: #c7b9ff;
+            }
             #mimir-root.mimir-dark .mimir-title,
             #mimir-root.mimir-dark .mimir-icon-btn,
             #mimir-root.mimir-dark .mimir-empty-title { color: #e5e7eb; }
@@ -2250,6 +2292,17 @@ export class MimirExplorer {
                 this.els.langPop.classList.add('mimir-hidden');
             });
         }
+        if (this.els.sequenceToggle && this.els.sequencePop) {
+            this.els.sequenceToggle.onclick = (e) => {
+                e.stopPropagation();
+                this.els.sequencePop.classList.toggle('mimir-hidden');
+            };
+            document.addEventListener('click', (e) => {
+                if (!this.els.sequencePop || this.els.sequencePop.classList.contains('mimir-hidden')) return;
+                if (this.els.sequencePop.contains(e.target) || this.els.sequenceToggle.contains(e.target)) return;
+                this.els.sequencePop.classList.add('mimir-hidden');
+            });
+        }
         if (this.els.viewerLangSelect) {
             this.els.viewerLangSelect.onchange = () => {
                 const value = this.els.viewerLangSelect.value;
@@ -2271,6 +2324,12 @@ export class MimirExplorer {
                 const value = this.els.manifestLangSelect.value || 'auto';
                 this.manifestLanguage = value;
                 this.refreshLanguageUI();
+            };
+        }
+        if (this.els.sequenceSelect) {
+            this.els.sequenceSelect.onchange = () => {
+                const value = this.els.sequenceSelect.value || 'auto';
+                this.setSequenceMode(value);
             };
         }
 
@@ -2673,8 +2732,16 @@ export class MimirExplorer {
         }
         if (canvasId && parsed?.canvasIndexById?.[canvasId] !== undefined) {
             const idx = parsed.canvasIndexById[canvasId];
-            if (this.osdExplorer) this.osdExplorer.goToPage(idx);
-            else this.pendingBookmarkPage = idx;
+            if (this.osdExplorer) {
+                if (this.isBookMode) {
+                    const bookIdx = idx <= 0 ? 0 : Math.floor((idx - 1) / 2) + 1;
+                    this.goToBookPage(bookIdx);
+                } else {
+                    this.osdExplorer.goToPage(idx);
+                }
+            } else {
+                this.pendingBookmarkPage = idx;
+            }
         }
         this.pendingContentState = null;
     }
@@ -3023,6 +3090,7 @@ export class MimirExplorer {
         this.updateStructure(parsed);
         this.updateMetadata(manifest, parsed);
         this.updateLanguageMenu();
+        this.updateSequenceMenu();
         this.updateStaticLabels();
         this.updateBottomDividers();
         this.els.btns.sidebarToggle.classList.remove('mimir-hidden');
@@ -3290,6 +3358,40 @@ export class MimirExplorer {
         this.applyRegionForPage(osdPageIndex);
     }
 
+    parseCanvasTime(id) {
+        if (!id || typeof id !== 'string' || !id.includes('#')) return null;
+        const fragment = id.split('#')[1] || '';
+        const match = fragment.match(/t=([0-9.]+)(?:,([0-9.]+))?/);
+        if (!match) return null;
+        const start = Number(match[1]);
+        return Number.isFinite(start) ? start : null;
+    }
+
+    goToTimeForRange(range) {
+        if (!range) return false;
+        const ids = Array.isArray(range.items) ? range.items : [];
+        const target = ids.find(id => typeof id === 'string' && id.includes('#t=')) || ids[0];
+        if (!target) return false;
+        const base = typeof target === 'string' ? target.split('#')[0] : null;
+        const time = typeof target === 'string' ? this.parseCanvasTime(target) : null;
+        const canvasIdx = base && this.currentParsed?.canvasIndexById?.[base];
+        if (Number.isInteger(canvasIdx) && this.osdExplorer) {
+            if (this.isBookMode) {
+                const bookIdx = canvasIdx <= 0 ? 0 : Math.floor((canvasIdx - 1) / 2) + 1;
+                this.goToBookPage(bookIdx);
+            } else {
+                this.osdExplorer.goToPage(canvasIdx);
+            }
+        }
+        if (Number.isFinite(time)) {
+            this.pendingStartTime = time;
+            if (this.avPlayer) {
+                try { this.avPlayer.currentTime = time; } catch {}
+            }
+        }
+        return true;
+    }
+
     applyRegionForPage(pageIndex) {
         if (this.isBookMode || this.isContinuousMode) {
             this.currentRegion = null;
@@ -3504,29 +3606,83 @@ export class MimirExplorer {
         }
     }
 
-    highlightActiveOutline(osdPageIndex) {
+    highlightActiveOutline(osdPageIndex, currentTime = null) {
         if (!this.els.structureOutline || !this.currentParsed?.ranges?.length) return;
-        const canvasId = this.currentParsed?.canvases?.[osdPageIndex]?.id;
-        if (!canvasId) return;
         const activeIdx = new Set();
-        const walk = (ranges, ancestors = []) => {
-            ranges.forEach(r => {
-                const contains = r.canvasIds?.includes(canvasId);
-                if (contains) {
-                    activeIdx.add(r._idx);
-                    ancestors.forEach(a => activeIdx.add(a._idx));
-                }
-                if (r.children?.length) walk(r.children, contains ? [...ancestors, r] : [...ancestors]);
-            });
-        };
-        walk(this.currentParsed.ranges);
+        if (Number.isFinite(currentTime)) {
+            const walk = (ranges, ancestors = []) => {
+                ranges.forEach(r => {
+                    const contains = (r.timeRanges || []).some(tr => currentTime >= tr.start && currentTime <= tr.end);
+                    if (contains) {
+                        activeIdx.add(r._idx);
+                        ancestors.forEach(a => activeIdx.add(a._idx));
+                    }
+                    if (r.children?.length) walk(r.children, contains ? [...ancestors, r] : [...ancestors]);
+                });
+            };
+            walk(this.currentParsed.ranges);
+        } else {
+            const canvasIds = [];
+            if (this.isBookMode) {
+                const leftIdx = this.bookPageIndex === 0 ? 0 : (this.bookPageIndex * 2 - 1);
+                const rightIdx = leftIdx + 1;
+                const leftId = this.currentParsed?.canvases?.[leftIdx]?.id;
+                const rightId = this.currentParsed?.canvases?.[rightIdx]?.id;
+                if (leftId) canvasIds.push(leftId);
+                if (rightId) canvasIds.push(rightId);
+            } else {
+                const canvasId = this.currentParsed?.canvases?.[osdPageIndex]?.id;
+                if (canvasId) canvasIds.push(canvasId);
+            }
+            if (!canvasIds.length) return;
+            const walk = (ranges, ancestors = []) => {
+                ranges.forEach(r => {
+                    const contains = r.canvasIds?.some(id => canvasIds.includes(id));
+                    if (contains) {
+                        activeIdx.add(r._idx);
+                        ancestors.forEach(a => activeIdx.add(a._idx));
+                    }
+                    if (r.children?.length) walk(r.children, contains ? [...ancestors, r] : [...ancestors]);
+                });
+            };
+            walk(this.currentParsed.ranges);
+        }
         const nodes = this.els.structureOutline.querySelectorAll('[data-mimir-outline-idx]');
         nodes.forEach(node => {
             const idx = Number(node.getAttribute('data-mimir-outline-idx'));
             node.classList.toggle('mimir-outline-active', activeIdx.has(idx));
             if (activeIdx.has(idx)) node.classList.add('mimir-outline-open');
+            const toggle = node.querySelector('[data-mimir-outline-toggle]');
+            if (toggle) {
+                toggle.textContent = node.classList.contains('mimir-outline-open') ? '−' : '+';
+            }
         });
-        const firstActive = this.els.structureOutline.querySelector('.mimir-outline-node.mimir-outline-active');
+        const items = this.els.structureOutline.querySelectorAll('[data-mimir-outline-item]');
+        items.forEach(item => {
+            let active = false;
+            if (Number.isFinite(currentTime)) {
+                const start = Number(item.getAttribute('data-time-start'));
+                const end = Number(item.getAttribute('data-time-end'));
+                if (Number.isFinite(start)) {
+                    const endVal = Number.isFinite(end) ? end : Number.POSITIVE_INFINITY;
+                    active = currentTime >= start && currentTime <= endVal;
+                }
+            } else {
+                const canvasId = item.getAttribute('data-canvas-id');
+                if (this.isBookMode) {
+                    const leftIdx = this.bookPageIndex === 0 ? 0 : (this.bookPageIndex * 2 - 1);
+                    const rightIdx = leftIdx + 1;
+                    const leftId = this.currentParsed?.canvases?.[leftIdx]?.id;
+                    const rightId = this.currentParsed?.canvases?.[rightIdx]?.id;
+                    if (canvasId && (canvasId === leftId || canvasId === rightId)) active = true;
+                } else {
+                    const canvasIdCurrent = this.currentParsed?.canvases?.[osdPageIndex]?.id;
+                    if (canvasId && canvasIdCurrent) active = canvasId === canvasIdCurrent;
+                }
+            }
+            item.classList.toggle('is-active', active);
+        });
+        const firstActive = this.els.structureOutline.querySelector('.mimir-outline-node.mimir-outline-active, .mimir-outline-item.is-active');
         if (firstActive) firstActive.scrollIntoView({ block: 'nearest' });
     }
 
@@ -4271,7 +4427,14 @@ export class MimirExplorer {
                 const entry = list.find(b => b.id === id);
                 if (!entry) return;
                 if (this.getManifestId() === entry.manifestId) {
-                    if (this.osdExplorer && Number.isFinite(entry.pageIndex)) this.osdExplorer.goToPage(entry.pageIndex);
+                    if (this.osdExplorer && Number.isFinite(entry.pageIndex)) {
+                        if (this.isBookMode) {
+                            const bookIdx = entry.pageIndex <= 0 ? 0 : Math.floor((entry.pageIndex - 1) / 2) + 1;
+                            this.goToBookPage(bookIdx);
+                        } else {
+                            this.osdExplorer.goToPage(entry.pageIndex);
+                        }
+                    }
                 } else {
                     this.pendingBookmarkPage = entry.pageIndex;
                     this.loadManifest(entry.manifestId);
@@ -4442,19 +4605,52 @@ export class MimirExplorer {
             const renderRange = (range, depth = 1) => {
                 const label = range.label || `Range`;
                 const children = Array.isArray(range.children) ? range.children : [];
-                const hasChildren = children.length > 0 && depth < 5;
-                const toggle = hasChildren
-                    ? `<button class="mimir-outline-toggle" data-mimir-outline-toggle>−</button>`
+                const itemIds = Array.isArray(range.items) ? range.items : [];
+                const itemEntries = itemIds.map((id) => {
+                    if (!id) return null;
+                    const baseId = typeof id === 'string' ? id.split('#')[0] : id;
+                    const idx = this.currentParsed?.canvasIndexById?.[baseId];
+                    if (!Number.isInteger(idx)) return null;
+                    const canvasLabel = this.currentParsed?.canvases?.[idx]?.label || '';
+                    const labelText = canvasLabel || `Canvas ${idx + 1}`;
+                    const time = typeof id === 'string' ? this.parseCanvasTime(id) : null;
+                    const endMatch = typeof id === 'string' ? id.match(/t=([0-9.]+),([0-9.]+)/) : null;
+                    const end = endMatch ? Number(endMatch[2]) : null;
+                    return {
+                        id: baseId,
+                        label: labelText,
+                        start: Number.isFinite(time) ? time : null,
+                        end: Number.isFinite(end) ? end : null
+                    };
+                }).filter(entry => entry && entry.label);
+                const hasChildren = children.length > 0;
+                const hasItems = itemEntries.length > 0;
+                const hasAny = hasChildren || hasItems;
+                const isOpen = hasAny && depth <= 1;
+                const toggle = hasAny
+                    ? `<button class="mimir-outline-toggle" data-mimir-outline-toggle>${isOpen ? '−' : '+'}</button>`
                     : `<span class="mimir-outline-leaf"></span>`;
-                const openClass = hasChildren && depth <= 3 ? 'mimir-outline-open' : '';
+                const openClass = isOpen ? 'mimir-outline-open' : '';
                 let html = `<div class="mimir-outline-node ${openClass}" data-mimir-outline-node data-mimir-outline-idx="${range._idx}">
                     <div class="mimir-outline-row">
                         ${toggle}
                         <button data-mimir-range="${range._idx}" class="mimir-outline-label">${label}</button>
                     </div>`;
-                if (hasChildren) {
+                if (hasAny) {
                     html += `<div class="mimir-outline-children">`;
-                    children.forEach(child => { html += renderRange(child, depth + 1); });
+                    if (hasItems) {
+                        itemEntries.forEach(entry => {
+                            const attrs = [
+                                entry.id ? `data-canvas-id="${entry.id}"` : '',
+                                Number.isFinite(entry.start) ? `data-time-start="${entry.start}"` : '',
+                                Number.isFinite(entry.end) ? `data-time-end="${entry.end}"` : ''
+                            ].filter(Boolean).join(' ');
+                            html += `<div class="mimir-outline-item" data-mimir-outline-item ${attrs}>${this.escapeHtml(entry.label)}</div>`;
+                        });
+                    }
+                    if (hasChildren) {
+                        children.forEach(child => { html += renderRange(child, depth + 1); });
+                    }
                     html += `</div>`;
                 }
                 html += `</div>`;
@@ -4638,12 +4834,19 @@ export class MimirExplorer {
                 if (!this.els.avProgress) return;
                 this.els.avProgress.value = el.currentTime;
                 this.els.avCurrent.innerText = this.formatTime(el.currentTime);
+                this.highlightActiveOutline(null, el.currentTime);
             };
             el.onloadedmetadata = () => {
                 this.els.avProgress.max = el.duration;
                 this.els.avTotal.innerText = this.formatTime(el.duration);
-                if (Number.isFinite(parsed?.startTime) && current?.canvasId && parsed?.startCanvasId === current.canvasId) {
-                    try { el.currentTime = parsed.startTime; } catch {}
+                const time = Number.isFinite(this.pendingStartTime)
+                    ? this.pendingStartTime
+                    : (Number.isFinite(parsed?.startTime) && current?.canvasId && parsed?.startCanvasId === current.canvasId)
+                        ? parsed.startTime
+                        : null;
+                if (Number.isFinite(time)) {
+                    try { el.currentTime = time; } catch {}
+                    this.pendingStartTime = null;
                 }
                 hidePlaceholder();
             };
@@ -4858,6 +5061,12 @@ export class MimirExplorer {
         container.querySelectorAll('[data-mimir-canvas]').forEach(btn => {
             btn.onclick = () => {
                 const idx = Number(btn.getAttribute('data-mimir-canvas'));
+                if (!Number.isFinite(idx)) return;
+                if (this.isBookMode) {
+                    const bookIdx = idx <= 0 ? 0 : Math.floor((idx - 1) / 2) + 1;
+                    this.goToBookPage(bookIdx);
+                    return;
+                }
                 if (this.osdExplorer) this.osdExplorer.goToPage(idx);
                 this.highlightActiveCanvas(idx, true);
             };
@@ -4880,10 +5089,17 @@ export class MimirExplorer {
             btn.onclick = () => {
                 const idx = Number(btn.getAttribute('data-mimir-range'));
                 const range = parsed?.rangesFlat?.[idx] || parsed?.ranges?.[idx];
-                const firstCanvasId = range?.items?.[0];
-                const canvasIdx = firstCanvasId && parsed?.canvasIndexById?.[firstCanvasId];
-                if (this.osdExplorer && Number.isInteger(canvasIdx)) {
-                    this.osdExplorer.goToPage(canvasIdx);
+                if (!this.goToTimeForRange(range)) {
+                    const firstCanvasId = range?.items?.[0];
+                    const canvasIdx = firstCanvasId && parsed?.canvasIndexById?.[firstCanvasId];
+                    if (Number.isInteger(canvasIdx)) {
+                        if (this.isBookMode) {
+                            const bookIdx = canvasIdx <= 0 ? 0 : Math.floor((canvasIdx - 1) / 2) + 1;
+                            this.goToBookPage(bookIdx);
+                        } else if (this.osdExplorer) {
+                            this.osdExplorer.goToPage(canvasIdx);
+                        }
+                    }
                 }
             };
         });
@@ -4896,12 +5112,36 @@ export class MimirExplorer {
                 btn.textContent = expanded ? '−' : '+';
             };
         });
+        container.querySelectorAll('[data-mimir-outline-item]').forEach(item => {
+            item.onclick = () => {
+                const canvasId = item.getAttribute('data-canvas-id');
+                const start = Number(item.getAttribute('data-time-start'));
+                const end = Number(item.getAttribute('data-time-end'));
+                const time = Number.isFinite(start) ? start : null;
+                const canvasIdx = canvasId && parsed?.canvasIndexById?.[canvasId];
+                if (this.osdExplorer && Number.isInteger(canvasIdx)) {
+                    if (this.isBookMode) {
+                        const bookIdx = canvasIdx <= 0 ? 0 : Math.floor((canvasIdx - 1) / 2) + 1;
+                        this.goToBookPage(bookIdx);
+                    } else {
+                        this.osdExplorer.goToPage(canvasIdx);
+                    }
+                }
+                if (Number.isFinite(time)) {
+                    this.pendingStartTime = time;
+                    if (this.avPlayer) {
+                        try { this.avPlayer.currentTime = time; } catch {}
+                    }
+                }
+            };
+        });
     }
 
     t(key) {
         const dict = {
             en: {
                 language: 'Language',
+                sequence: 'Sequence',
                 viewer_language: 'Viewer Language',
                 manifest_language: 'Manifest Language',
                 auto_browser: 'Auto (Browser)',
@@ -4998,6 +5238,7 @@ export class MimirExplorer {
             },
             de: {
                 language: 'Sprache',
+                sequence: 'Sequenz',
                 viewer_language: 'Viewer-Sprache',
                 manifest_language: 'Manifest-Sprache',
                 auto_browser: 'Auto (Browser)',
@@ -5094,6 +5335,7 @@ export class MimirExplorer {
             },
             fr: {
                 language: 'Langue',
+                sequence: 'Séquence',
                 viewer_language: 'Langue du viewer',
                 manifest_language: 'Langue du manifeste',
                 auto_browser: 'Auto (navigateur)',
@@ -5190,6 +5432,7 @@ export class MimirExplorer {
             },
             it: {
                 language: 'Lingua',
+                sequence: 'Sequenza',
                 viewer_language: 'Lingua del viewer',
                 manifest_language: 'Lingua del manifesto',
                 auto_browser: 'Auto (browser)',
@@ -5286,6 +5529,7 @@ export class MimirExplorer {
             },
             es: {
                 language: 'Idioma',
+                sequence: 'Secuencia',
                 viewer_language: 'Idioma del visor',
                 manifest_language: 'Idioma del manifiesto',
                 auto_browser: 'Auto (navegador)',
@@ -5382,6 +5626,7 @@ export class MimirExplorer {
             },
             nl: {
                 language: 'Taal',
+                sequence: 'Volgorde',
                 viewer_language: 'Viewer-taal',
                 manifest_language: 'Manifest-taal',
                 auto_browser: 'Auto (browser)',
@@ -5622,6 +5867,104 @@ export class MimirExplorer {
         this.els.manifestLangSelect.value = manifestVal;
     }
 
+    getCurrentCanvasId() {
+        const parsed = this.currentParsed;
+        if (!parsed?.canvases?.length) return null;
+        if (this.isBookMode) {
+            const leftIdx = this.bookPageIndex === 0 ? 0 : (this.bookPageIndex * 2 - 1);
+            return parsed.canvases[leftIdx]?.id || null;
+        }
+        const idx = Number.isFinite(this.currentCanvasIndex) ? this.currentCanvasIndex : (this.osdExplorer?.currentPage?.() || 0);
+        return parsed.canvases[idx]?.id || parsed.canvases[0]?.id || null;
+    }
+
+    applySequenceToParsed(parsed, modeId) {
+        if (!parsed) return parsed;
+        if (!parsed.originalCanvases?.length) {
+            parsed.originalCanvases = parsed.canvases?.slice?.() || [];
+            parsed.originalCanvasIndexById = { ...(parsed.canvasIndexById || {}) };
+        }
+        const original = parsed.originalCanvases;
+        let canvases = original;
+        if (modeId && modeId !== 'auto') {
+            const option = parsed.sequenceOptions?.find(o => o.id === modeId);
+            if (option?.canvasIds?.length) {
+                const map = new Map(original.map(c => [c.id, c]));
+                const ordered = [];
+                option.canvasIds.forEach((id) => {
+                    if (map.has(id)) {
+                        ordered.push(map.get(id));
+                        map.delete(id);
+                    }
+                });
+                original.forEach((c) => {
+                    if (map.has(c.id)) ordered.push(c);
+                });
+                canvases = ordered;
+            }
+        }
+        parsed.canvases = canvases;
+        const newIndexById = {};
+        canvases.forEach((c, idx) => {
+            if (c?.id) newIndexById[c.id] = idx;
+        });
+        parsed.canvasIndexById = newIndexById;
+        if (parsed.startCanvasId && newIndexById[parsed.startCanvasId] !== undefined) {
+            parsed.startCanvasIndex = newIndexById[parsed.startCanvasId];
+        } else {
+            parsed.startCanvasIndex = null;
+        }
+        return parsed;
+    }
+
+    applySequenceOrder(modeId) {
+        const parsed = this.currentParsed;
+        if (!parsed?.originalCanvases?.length && !parsed?.canvases?.length) return;
+        const currentId = this.getCurrentCanvasId();
+        this.applySequenceToParsed(parsed, modeId);
+        this.currentParsed = parsed;
+        const newIndexById = parsed.canvasIndexById || {};
+        let newIdx = 0;
+        if (currentId && newIndexById[currentId] !== undefined) newIdx = newIndexById[currentId];
+        if (this.isBookMode) {
+            this.bookPageIndex = newIdx <= 0 ? 0 : Math.floor((newIdx - 1) / 2) + 1;
+        } else {
+            this.pendingStartPage = newIdx;
+        }
+        this.updateStructure(parsed);
+        if (parsed.type === 'image') {
+            this.renderImage(this.currentManifest, parsed);
+        }
+    }
+
+    setSequenceMode(modeId) {
+        const next = modeId || 'auto';
+        if (this.sequenceMode === next) return;
+        this.sequenceMode = next;
+        if (this.els.sequenceSelect) this.els.sequenceSelect.value = this.sequenceMode;
+        this.applySequenceOrder(next);
+    }
+
+    updateSequenceMenu() {
+        if (!this.els.sequenceWrap || !this.els.sequenceSelect) return;
+        const options = this.currentParsed?.sequenceOptions || [];
+        const show = options.length >= 2;
+        this.els.sequenceWrap.classList.toggle('mimir-hidden', !show);
+        if (!show) {
+            this.sequenceMode = 'auto';
+            return;
+        }
+        const autoLabel = this.t('auto');
+        const opts = [
+            `<option value="auto">${autoLabel}</option>`,
+            ...options.map(o => `<option value="${o.id}">${this.escapeHtml(o.label || o.id)}</option>`)
+        ].join('');
+        this.els.sequenceSelect.innerHTML = opts;
+        const exists = options.some(o => o.id === this.sequenceMode);
+        if (!exists) this.sequenceMode = 'auto';
+        this.els.sequenceSelect.value = this.sequenceMode;
+    }
+
     updateStaticLabels() {
         if (this.els.sidebar) {
             const header = this.els.sidebar.querySelector('.mimir-sidebar-header .mimir-eyebrow');
@@ -5705,6 +6048,11 @@ export class MimirExplorer {
             if (titles[0]) titles[0].textContent = this.t('viewer_language');
             if (titles[1]) titles[1].textContent = this.t('manifest_language');
         }
+        if (this.els.sequenceToggle) this.els.sequenceToggle.title = this.t('sequence');
+        if (this.els.sequencePop) {
+            const titles = this.els.sequencePop.querySelectorAll('.mimir-lang-section .mimir-meta-title');
+            if (titles[0]) titles[0].textContent = this.t('sequence');
+        }
         if (this.els.messageText) this.els.messageText.textContent = this.t('ready');
         const emptySub = this.els.message?.querySelector('.mimir-empty-sub');
         if (emptySub) emptySub.textContent = this.t('load_manifest');
@@ -5725,11 +6073,13 @@ export class MimirExplorer {
             });
             this.fulltextByCanvasId = cachedFulltext;
             this.fulltextSourcesByCanvasId = this.currentParsed.fulltextSourcesByCanvasId || this.fulltextSourcesByCanvasId;
+            this.applySequenceToParsed(this.currentParsed, this.sequenceMode);
         }
         this.updateTopBar(this.currentParsed?.type, this.currentManifest, this.currentParsed);
         this.updateStructure(this.currentParsed);
         this.updateMetadata(this.currentManifest, this.currentParsed);
         this.updateLanguageMenu();
+        this.updateSequenceMenu();
         this.updateStaticLabels();
         const page = this.isBookMode ? this.bookPageIndex : (this.osdExplorer?.currentPage?.() || 0);
         this.updateAnnotationsPanel(page);
@@ -6211,6 +6561,19 @@ export class MimirExplorer {
             });
         }
 
+        const normalizeCanvasId = (id) => (typeof id === 'string' ? id.split('#')[0] : id);
+        const topRanges = asArray(manifest.structures || manifest.ranges);
+        const sequenceOptions = topRanges.map((range, idx) => {
+            if (!range) return null;
+            const items = asArray(range.items || range.canvases || range.members);
+            const canvasIds = items.map(getId).filter(Boolean).map(normalizeCanvasId)
+                .filter(id => canvasIndexById[id] !== undefined);
+            if (canvasIds.length < 2) return null;
+            const id = getId(range) || `sequence-${idx + 1}`;
+            const label = getLabel(range.label) || `Sequence ${idx + 1}`;
+            return { id, label, canvasIds };
+        }).filter(Boolean);
+
         const parseStartTime = (selector) => {
             if (!selector) return null;
             const sel = Array.isArray(selector) ? selector[0] : selector;
@@ -6245,6 +6608,16 @@ export class MimirExplorer {
             }
         }
 
+        const parseTimeRangeFromId = (id) => {
+            if (!id || typeof id !== 'string' || !id.includes('#')) return null;
+            const fragment = id.split('#')[1] || '';
+            const match = fragment.match(/t=([0-9.]+)(?:,([0-9.]+))?/);
+            if (!match) return null;
+            const start = Number(match[1]);
+            const end = Number(match[2]);
+            if (!Number.isFinite(start)) return null;
+            return { start, end: Number.isFinite(end) ? end : Number.POSITIVE_INFINITY };
+        };
         const parseRanges = (ranges) => {
             return asArray(ranges).map(r => {
                 const range = {
@@ -6256,7 +6629,10 @@ export class MimirExplorer {
                     .filter(item => typeof item === 'object' && (getType(item).toLowerCase().includes('range') || item.items || item.ranges));
                 range.children = parseRanges(children);
                 const childIds = range.children.flatMap(c => c.canvasIds || []);
-                range.canvasIds = Array.from(new Set([...range.items, ...childIds]));
+                range.canvasIds = Array.from(new Set([...range.items.map(normalizeCanvasId), ...childIds.map(normalizeCanvasId)]));
+                const itemTimes = range.items.map(parseTimeRangeFromId).filter(Boolean);
+                const childTimes = range.children.flatMap(c => c.timeRanges || []);
+                range.timeRanges = [...itemTimes, ...childTimes];
                 return range;
             });
         };
@@ -6326,6 +6702,9 @@ export class MimirExplorer {
             fulltextPageRefs,
             fulltextSourcesByCanvasId,
             behavior,
+            sequenceOptions,
+            originalCanvases: canvases.slice(),
+            originalCanvasIndexById: { ...canvasIndexById },
             manifestLanguages,
             startCanvasIndex,
             startCanvasId: startId || null,
@@ -6343,6 +6722,8 @@ export class MimirExplorer {
         this.avItems = []; this.modelItems = []; this.currentAvIndex = 0; this.currentModelIndex = 0;
         this.currentParsed = null;
         this.currentAnnotations = [];
+        this.sequenceMode = 'auto';
+        this.sequenceOptions = [];
         this.selectedAnnotationId = null;
         this.annotationsByCanvasId = {};
         this.currentFulltextLines = [];
