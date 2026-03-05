@@ -3437,7 +3437,7 @@ export class MimirExplorer {
             showNavigationControl: false, showSequenceControl: false, prefixUrl: "",
             blendTime: 0.1, animationTime: 0.5, preserveViewport: !this.isBookMode && !this.isContinuousMode,
             visibilityRatio: 1, minZoomLevel: 0, defaultZoomLevel: 0, homeFillsExplorer: true,
-            drawer: supportsWebGL ? ['webgl', 'canvas'] : ['canvas'],
+            drawer: supportsWebGL ? 'webgl' : 'canvas',
             crossOriginPolicy: 'Anonymous',
             loadTilesWithAjax: this.osdUseAjax
         });
