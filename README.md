@@ -11,21 +11,23 @@ Mimir IIIF Explorer is a modular IIIF viewer focused on image, AV, and 3D experi
 This project is developed with Codex and human oversight.
 
 ## Current Features
-- IIIF Presentation v2/v3 manifest parsing.
-- OpenSeadragon image viewer with sequence navigation and book mode.
-- Audio/video playback with timeline controls.
-- 3D model viewing via `@google/model-viewer`.
+- IIIF Presentation v2/v3 manifest parsing with multi-language labels and metadata.
+- OpenSeadragon image viewer with sequence navigation, book mode, and continuous mode.
+- Audio/video playback with timeline controls and start-time support.
+- 3D model viewing with Three.js controls (lighting and camera).
 - Image filters: rotate, flip, brightness, contrast, greyscale, RGB channels.
+- Region focus for ImageApiSelector with optional blur outside region.
 - Download current image as full-res JPEG.
 - Dark mode with auto/app/manual modes.
 - Responsive layout with adaptive panel behavior.
-- Cookie-based bookmarks (grouped by manifest).
+- Cookie-based bookmarks (grouped by manifest and page).
 - Annotations with list + overlays, single/select and show-all modes.
 - Fulltext OCR (ALTO + HOCR) with line overlays and list sync.
-- URL query support (`?manifest=...`) for auto-loading manifests.
+- Collections view with gallery, pagination, list/grid toggle, and collection linking.
+- URL query support (`?manifest=...`, `?page=...`, `?time=...`) for auto-loading.
 
 ## Future Features
-- Better keyboard navigation and accessibility pass.
+- Keyboard navigation and accessibility pass.
 - Theming API for typography, spacing, and component overrides.
 - Plugin hooks for custom panels and rendering modes.
 - Optional externalized dependencies for smaller bundles.
