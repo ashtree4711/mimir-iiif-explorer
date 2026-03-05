@@ -181,6 +181,8 @@ export class MimirExplorer {
         this.collectionPageIndex = 0;
         this.collectionPageSize = Number.isFinite(options.collectionPageSize) ? Math.max(6, options.collectionPageSize) : 24;
         this.collectionViewMode = options.collectionViewMode === 'list' ? 'list' : 'grid';
+        this.osdUseAjax = options.osdUseAjax !== false;
+        this.osdCorsFallbackTried = false;
         this.activeCollectionLabel = '';
         this.annotationsByCanvasId = {};
         this.annotationMode = 'single'; // single | all
@@ -3437,7 +3439,17 @@ export class MimirExplorer {
             visibilityRatio: 1, minZoomLevel: 0, defaultZoomLevel: 0, homeFillsExplorer: true,
             drawer: supportsWebGL ? ['webgl', 'canvas'] : ['canvas'],
             crossOriginPolicy: 'Anonymous',
-            loadTilesWithAjax: true
+            loadTilesWithAjax: this.osdUseAjax
+        });
+        this.osdExplorer.addHandler('tile-load-failed', (event) => {
+            const msg = String(event?.message || event?.error || '').toLowerCase();
+            const isCors = msg.includes('cors') || msg.includes('cross-origin') || msg.includes('access-control');
+            if (isCors && this.osdUseAjax && !this.osdCorsFallbackTried) {
+                this.osdCorsFallbackTried = true;
+                this.osdUseAjax = false;
+                if (this.osdExplorer) this.osdExplorer.destroy();
+                this.renderImage(this.currentManifest, this.currentParsed);
+            }
         });
         this.osdExplorer.addHandler('open', () => {
             const goToIndex = (idx) => {
