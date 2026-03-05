@@ -3724,6 +3724,7 @@ export class MimirExplorer {
             if (!tileSource) return;
             this.osdExplorer.addTiledImage({
                 tileSource,
+                drawer: this.osdExplorer.drawer,
                 x: startX + idx * (1 + gap),
                 y: 0,
                 width: 1
