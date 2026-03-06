@@ -182,7 +182,7 @@ export class MimirExplorer {
         this.collectionPageSize = Number.isFinite(options.collectionPageSize) ? Math.max(6, options.collectionPageSize) : 24;
         this.collectionViewMode = options.collectionViewMode === 'list' ? 'list' : 'grid';
         this.osdUseAjax = options.osdUseAjax !== false;
-        this.osdCorsFallbackTried = false;
+        this.debug = !!options.debug;
         this.activeCollectionLabel = '';
         this.annotationsByCanvasId = {};
         this.annotationMode = 'single'; // single | all
@@ -220,6 +220,14 @@ export class MimirExplorer {
 
         // Apply theme color as CSS variable
         this.container.style.setProperty('--mimir-primary', this.options.primaryColor);
+        if (getComputedStyle(this.container).position === 'static') {
+            this.container.style.position = 'relative';
+        }
+        if (!this.container.style.width) this.container.style.width = '100%';
+        if (this.container.clientHeight === 0) {
+            this.container.style.minHeight = '100vh';
+            if (!this.container.style.height) this.container.style.height = '100%';
+        }
         
         // Create UI structure
         this.container.innerHTML = `
@@ -692,6 +700,15 @@ export class MimirExplorer {
         this.bindLayoutRules();
         this.bindTabEvents(this.els.sidebar);
         this.bindTabEvents(this.els.info);
+        if (this.debug) {
+            const osdVersion = OpenSeadragon?.version?.versionStr || OpenSeadragon?.version?.version || 'unknown';
+            console.info('[Mimir] Debug enabled', {
+                osdVersion,
+                userAgent: navigator?.userAgent || 'unknown',
+                osdUseAjax: this.osdUseAjax,
+                collectionViewMode: this.collectionViewMode
+            });
+        }
         this.els.sidebar.classList.add('mimir-hidden');
         this.els.info.classList.add('mimir-hidden');
         this.els.btns.sidebarToggle.classList.add('mimir-hidden');
@@ -736,6 +753,9 @@ export class MimirExplorer {
                 display: flex; items-stretch; overflow: hidden;
                 font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
                 overflow-x: hidden;
+                width: 100%;
+                height: 100%;
+                min-height: 100%;
             }
             .mimir-bg {
                 position: absolute; inset: 0; z-index: 0;
@@ -745,7 +765,7 @@ export class MimirExplorer {
                 transition: background 0.4s ease;
                 pointer-events: none;
             }
-            .mimir-app { position: relative; z-index: 1; }
+            .mimir-app { position: relative; z-index: 1; width: 100%; height: 100%; min-height: 100%; }
             .mimir-text { color: #111111; }
             .mimir-text-muted { color: #6b7280; }
             .mimir-hidden { display: none !important; }
@@ -1744,10 +1764,18 @@ export class MimirExplorer {
             }
 
             .mimir-three-canvas { width: 100%; height: 100%; display: block; }
-            #mimir-osd { transform-origin: center; }
+            #mimir-osd { transform-origin: center; width: 100%; height: 100%; }
             video, audio { border-radius: 1rem; background: #1a1a1a; box-shadow: 0 25px 50px -12px rgba(17,17,17,0.5); }
+            #mimir-av { z-index: 8; width: 100%; height: 100%; }
             .mimir-av-wrapper { position: relative; width: 100%; height: 100%; display: grid; place-items: center; }
-            .mimir-av-media { max-width: 80%; max-height: 80%; outline: none; transition: all 0.3s ease; transform-origin: center; }
+            .mimir-av-wrapper.mimir-av-audio {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 0.85rem;
+            }
+            .mimir-av-media { max-width: 80%; max-height: 80%; outline: none; transition: all 0.3s ease; transform-origin: center; display: block; }
             .mimir-av-media.mimir-av-full { width: 100%; height: 100%; max-width: 100%; max-height: 100%; border-radius: 0; object-fit: contain; }
             .mimir-av-placeholder {
                 position: absolute;
@@ -3290,6 +3318,8 @@ export class MimirExplorer {
         this.updateBottomBarOffset();
         this.setFilterOpen(this.filterOpen);
         this.enforcePanelRules();
+        this.els.btns.sidebarToggle.classList.toggle('mimir-hidden', this.els.sidebar.classList.contains('mimir-sidebar-open'));
+        this.els.btns.infoToggle.classList.toggle('mimir-hidden', this.els.info.classList.contains('mimir-sidebar-open'));
         const activeCollectionTab = this.els.sidebar?.querySelector('.mimir-tab.is-active')?.getAttribute('data-tab') === 'collection';
         if (activeCollectionTab) {
             const collection = this.currentParsed?.collectionLinks?.[0];
@@ -3359,6 +3389,7 @@ export class MimirExplorer {
 
     renderImage(manifest, parsed) {
         this.els.osd.classList.remove('mimir-hidden'); this.showToolbar(true);
+        if (this.els.av) this.els.av.classList.add('mimir-hidden');
         if (this.els.fulltextLayer) this.els.fulltextLayer.classList.remove('mimir-hidden');
         if (this.els.annotationsLayer) this.els.annotationsLayer.classList.remove('mimir-hidden');
         this.hasRegion = false;
@@ -3432,26 +3463,43 @@ export class MimirExplorer {
                 return false;
             }
         })() && !isSafari;
+        const crossOriginPolicy = this.osdUseAjax ? 'Anonymous' : false;
         this.osdExplorer = OpenSeadragon({
             element: this.els.osd, tileSources: finalSources, sequenceMode: !this.isBookMode && !this.isContinuousMode,
             showNavigationControl: false, showSequenceControl: false, prefixUrl: "",
             blendTime: 0.1, animationTime: 0.5, preserveViewport: !this.isBookMode && !this.isContinuousMode,
             visibilityRatio: 1, minZoomLevel: 0, defaultZoomLevel: 0, homeFillsExplorer: true,
-            drawer: supportsWebGL ? 'webgl' : 'canvas',
-            crossOriginPolicy: 'Anonymous',
+            drawer: ['auto', 'webgl', 'canvas', 'html'],
+            crossOriginPolicy,
             loadTilesWithAjax: this.osdUseAjax
         });
-        this.osdExplorer.addHandler('tile-load-failed', (event) => {
-            const msg = String(event?.message || event?.error || '').toLowerCase();
-            const isCors = msg.includes('cors') || msg.includes('cross-origin') || msg.includes('access-control');
-            if (isCors && this.osdUseAjax && !this.osdCorsFallbackTried) {
-                this.osdCorsFallbackTried = true;
-                this.osdUseAjax = false;
-                if (this.osdExplorer) this.osdExplorer.destroy();
-                this.renderImage(this.currentManifest, this.currentParsed);
+        if (this.debug) {
+            console.info('[Mimir] OSD init', {
+                drawer: this.osdExplorer?.drawer?.constructor?.name || this.osdExplorer?.drawer || 'unknown',
+                useAjax: this.osdUseAjax,
+                crossOriginPolicy,
+                webgl: supportsWebGL,
+                isSafari,
+                tiles: this.tileSources.length
+            });
+            const rect = this.els.osd?.getBoundingClientRect?.();
+            if (rect) {
+                console.info('[Mimir] OSD container size', {
+                    width: rect.width,
+                    height: rect.height
+                });
             }
+            const sample = this.tileSources?.[0];
+            if (sample) console.info('[Mimir] TileSource sample', sample);
+        }
+        this.osdExplorer.addHandler('tile-load-failed', (event) => {
+            if (this.debug) console.warn('[Mimir] Tile load failed', event?.message || event);
         });
         this.osdExplorer.addHandler('open', () => {
+            if (this.debug) {
+                const count = this.osdExplorer?.world?.getItemCount?.() ?? 0;
+                console.info('[Mimir] OSD open', { items: count });
+            }
             const goToIndex = (idx) => {
                 if (!Number.isFinite(idx)) return false;
                 if (this.isBookMode) {
@@ -3498,6 +3546,9 @@ export class MimirExplorer {
         });
         this.osdExplorer.addHandler('tile-loaded', () => {
             if (!this.isBookMode && !this.isContinuousMode) this.applyRegionForPage(this.osdExplorer.currentPage?.() ?? 0);
+        });
+        this.osdExplorer.addHandler('open-failed', (evt) => {
+            if (this.debug) console.warn('[Mimir] OSD open failed', evt);
         });
         this.osdExplorer.addHandler('animation', () => { this.scheduleOverlayUpdate(); });
         this.osdExplorer.addHandler('resize', () => { this.scheduleOverlayUpdate(); });
@@ -3722,9 +3773,14 @@ export class MimirExplorer {
         spread.forEach((src, idx) => {
             const tileSource = (typeof src === 'string') ? src : (src?.url || src);
             if (!tileSource) return;
+            const drawer = this.osdExplorer?.drawer || this.osdExplorer?.options?.drawer;
+            if (!drawer) {
+                if (this.debug) console.warn('[Mimir] Missing OSD drawer for book spread');
+                return;
+            }
             this.osdExplorer.addTiledImage({
                 tileSource,
-                drawer: this.osdExplorer.drawer,
+                drawer,
                 x: startX + idx * (1 + gap),
                 y: 0,
                 width: 1
@@ -5028,6 +5084,9 @@ export class MimirExplorer {
 
     renderAV(manifest, parsed) {
         this.els.av.classList.remove('mimir-hidden'); this.showToolbar(true);
+        this.hideMessage();
+        if (this.els.osd) this.els.osd.classList.add('mimir-hidden');
+        if (this.els.collectionGrid) this.els.collectionGrid.classList.add('mimir-hidden');
         if (this.els.fulltextLayer) this.els.fulltextLayer.classList.add('mimir-hidden');
         if (this.els.annotationsLayer) this.els.annotationsLayer.classList.add('mimir-hidden');
         this.avItems = parsed?.avItems || [];
@@ -5109,6 +5168,9 @@ export class MimirExplorer {
                 setPlayingUI(!el.paused);
             }
 
+            if (mediaType === 'audio') {
+                wrapper.classList.add('mimir-av-audio');
+            }
             if (mediaType === 'audio' && accompanyingUrl) {
                 const still = document.createElement('div');
                 still.className = 'mimir-av-placeholder';
@@ -5153,6 +5215,9 @@ export class MimirExplorer {
 
     render3D(manifest, parsed) {
         this.els.threeD.classList.remove('mimir-hidden'); this.showToolbar(true);
+        if (this.els.osd) this.els.osd.classList.add('mimir-hidden');
+        if (this.els.av) this.els.av.classList.add('mimir-hidden');
+        if (this.els.collectionGrid) this.els.collectionGrid.classList.add('mimir-hidden');
         if (this.els.fulltextLayer) this.els.fulltextLayer.classList.add('mimir-hidden');
         if (this.els.annotationsLayer) this.els.annotationsLayer.classList.add('mimir-hidden');
         this.els.btns.zoom.classList.add('mimir-hidden'); this.els.btns.bookToggle.classList.add('mimir-hidden');
