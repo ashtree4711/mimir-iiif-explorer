@@ -59,9 +59,13 @@ Outline / ranges
 - `rangesFlat` preserves traversal order and is used for outline click navigation.
 
 Annotations and fulltext
-- `fulltext` is currently a placeholder empty string; UI shows “No fulltext available.”
-- Annotations panel is currently a placeholder and does not parse annotation lists.
+- `fulltext` top-level field is currently still a placeholder empty string and should not be treated as the authoritative OCR payload.
+- Runtime OCR/fulltext support is driven through `fulltextSourcesByCanvasId`, `fulltextPageRefs`, parsed ALTO/HOCR responses, and `currentFulltextLines`.
+- `annotationsByCanvasId` is populated during manifest parsing and can be enriched later by remote annotation page fetches.
+- Annotation entries currently include fields such as `id`, `label`, `html`, `canvasId`, `xywh`, `styleClass`, and `stylesheets`.
 
 Collections
 - `items` is populated from `manifest.items` or `manifest.members` for collections.
 - `collectionLinks` comes from `partOf` and `within`, used to drive the “Collection” tab.
+- `sequenceOptions` can be derived from top-level ranges when they map to multi-canvas sequences.
+- `startCanvasIndex`, `startCanvasId`, and `startTime` are derived from `start` / `startCanvas` when present.

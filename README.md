@@ -46,6 +46,29 @@ const explorer = new MimirExplorer('mimir-container', {
   darkMode: 'auto'
 });
 
-// Later, when you have a manifest URL:
-// explorer.loadManifest('https://example.org/iiif/manifest.json');
+await explorer.loadManifest('https://example.org/iiif/manifest.json');
 ```
+
+## Theme Modes
+- `auto`: follow browser `prefers-color-scheme`
+- `light`: force light mode
+- `dark`: force dark mode
+- `app`: follow host-app theme state
+
+For host-controlled theme setups, prefer `darkMode: 'app'` and either:
+- call `explorer.setDarkMode(isDark)` from the host, or
+- expose a host-side `window.toggleDarkMode()` so the viewer toggle can delegate back into the app
+
+## Local Development
+The package can be consumed in two ways by host applications:
+- npm package mode
+- local source alias mode during active development
+
+See the integration guide for the recommended Vite alias pattern and env variables.
+
+## Documentation
+- [API](docs/api.md)
+- [Integration](docs/integration.md)
+- [Architecture](docs/architecture.md)
+- [IIIF Model](codex/iiif_model.md)
+- [Release Workflow](codex/release_workflow.md)
