@@ -34,6 +34,10 @@ Host layout guidance
 - In app shells, prefer a flex or grid container with explicit height handling.
 - If the viewer should fill the remaining viewport, make sure parent elements allow height contraction with patterns like `min-height: 0` where needed.
 
+Host storage note
+- The viewer currently persists bookmarks and user-selected non-default OCR/fulltext overlay colors in cookies.
+- The fulltext color cookie key is `mimir_fulltext_color`.
+
 ## Dark mode integration
 
 ### Standalone websites

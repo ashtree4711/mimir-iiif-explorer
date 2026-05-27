@@ -1,14 +1,12 @@
 # Mimir IIIF Explorer
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/mimir_dark.png">
-  <img alt="Mimir logo" src="docs/mimir_light.png" width="320">
+  <source media="(prefers-color-scheme: dark)" srcset="src/assets/mimir_logo_darkmode.png">
+  <img alt="Mimir logo" src="src/assets/mimir_logo_lightmode.png" width="320">
 </picture>
 
 ## Idea
 Mimir IIIF Explorer is a modular IIIF viewer focused on image, AV, and 3D experiences with a clean, modern UI. It is designed as a small, embeddable library that renders a complete interface inside a host container.
-
-This project is developed with Codex and human oversight.
 
 ## Current Features
 - IIIF Presentation v2/v3 manifest parsing with multi-language labels and metadata.
@@ -22,7 +20,7 @@ This project is developed with Codex and human oversight.
 - Responsive layout with adaptive panel behavior.
 - Cookie-based bookmarks (grouped by manifest and page).
 - Annotations with list + overlays, single/select and show-all modes.
-- Fulltext OCR (ALTO + HOCR) with line overlays and list sync.
+- Fulltext OCR (ALTO + HOCR) with line overlays, list sync, and user-selectable overlay colors.
 - Collections view with gallery, pagination, list/grid toggle, and collection linking.
 - URL query support (`?manifest=...`, `?page=...`, `?time=...`) for auto-loading.
 

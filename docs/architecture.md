@@ -112,6 +112,12 @@ Those are then rendered as:
 - text lists
 - line overlays
 - synchronized focus and hover states
+- a user-facing overlay color palette with default, preset, and custom-color paths
+
+Runtime details
+- The default OCR/fulltext overlay color resolves from `options.primaryColor`.
+- User-selected non-default overlay colors are persisted through the `mimir_fulltext_color` cookie.
+- The custom-color path uses the browser's native color input and avoids palette re-rendering while the picker is open so Safari does not immediately close it.
 
 ## State model
 

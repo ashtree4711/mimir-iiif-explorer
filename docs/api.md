@@ -143,6 +143,21 @@ Current implementation details
 - If `window.toggleDarkMode()` exists, the viewer's own dark-mode toggle calls it.
 - Otherwise the viewer falls back to toggling only its own internal theme state.
 
+## Fulltext / OCR behavior
+
+When OCR/fulltext data is available, the viewer exposes:
+- a line-vs-flow text toggle in the fulltext panel
+- synchronized overlay and list highlighting
+- a built-in overlay color palette
+- a native browser color picker for custom overlay colors
+
+Current behavior details
+- The default fulltext overlay color is the configured `primaryColor`.
+- Users can temporarily switch to predefined alternative overlay colors from the palette.
+- Users can also choose an arbitrary custom color through the browser's native `input[type="color"]` picker.
+- The selected non-default overlay color is persisted in the `mimir_fulltext_color` cookie.
+- Choosing the default color clears that cookie and falls back to `primaryColor` again.
+
 ## Host-side globals
 
 Optional globals the viewer will use when available
