@@ -1,8 +1,8 @@
 # Mimir IIIF Explorer
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="src/assets/mimir_logo_darkmode.png">
-  <img alt="Mimir logo" src="src/assets/mimir_logo_lightmode.png" width="320">
+  <source media="(prefers-color-scheme: dark)" srcset="https://cdn.jsdelivr.net/npm/@mimir-iiif/explorer@latest/src/assets/mimir_logo_darkmode.png">
+  <img alt="Mimir logo" src="https://cdn.jsdelivr.net/npm/@mimir-iiif/explorer@latest/src/assets/mimir_logo_lightmode.png" width="320">
 </picture>
 
 ## Idea
