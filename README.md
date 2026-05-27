@@ -70,5 +70,3 @@ See the integration guide for the recommended Vite alias pattern and env variabl
 - [API](docs/api.md)
 - [Integration](docs/integration.md)
 - [Architecture](docs/architecture.md)
-- [IIIF Model](codex/iiif_model.md)
-- [Release Workflow](codex/release_workflow.md)

@@ -42,7 +42,7 @@ Important outputs include:
 - start canvas and start time
 - sequence options
 
-Reference: [codex/iiif_model.md](/Users/markeschweiler/Documents/GitHub/mimir-iiif-explorer/codex/iiif_model.md)
+The normalized model is documented internally for maintainers and is intentionally not part of the public package documentation surface.
 
 ### 3. Content-type detection
 

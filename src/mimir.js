@@ -173,6 +173,12 @@ export class MimirExplorer {
         this.currentAvIndex = 0;
         this.currentModelIndex = 0;
         this.threeState = null;
+        this.cachedOsdTargets = null;
+        this.lastAppliedOsdFilter = null;
+        this.lastAppliedMediaFilter = null;
+        this.lastAppliedOsdTransform = null;
+        this.lastAppliedMediaTransform = null;
+        this.lastBottomBarHeight = null;
         this.collectionCache = new Map();
         this.collectionItemsCache = new Map();
         this.collectionGalleryCache = new Map();
@@ -206,6 +212,10 @@ export class MimirExplorer {
         this.sequenceOptions = [];
         this.isCollectionMode = false;
         this.overlayUpdatePending = false;
+        this.overlayThrottleTimer = null;
+        this.lastOverlayUpdateAt = 0;
+        this.panelTransitionActive = false;
+        this.panelTransitionTimer = null;
         this.currentCanvasIndex = 0;
         this.zoomUpdatePending = false;
         this.pendingZoomValue = null;
@@ -214,6 +224,10 @@ export class MimirExplorer {
         this.regionBlurEnabled = true;
         this.hasRegion = false;
         this.currentRegion = null;
+        this.isSafariBrowser = (() => {
+            const ua = navigator?.userAgent || '';
+            return /Safari/i.test(ua) && !/Chrome|Chromium|Edg/i.test(ua);
+        })();
         this.missingObjectUrls = [];
         this.missingPageIndexes = new Set();
         this.pendingStartTime = null;
@@ -236,23 +250,25 @@ export class MimirExplorer {
 
                 <!-- INTERNAL SIDEBAR -->
                 <aside id="mimir-sidebar" class="mimir-sidebar mimir-hidden">
-                    <div class="mimir-sidebar-header">
-                        <h2 class="mimir-eyebrow">${this.t('structure')}</h2>
-                        <button id="mimir-sidebar-close" class="mimir-icon-btn" title="${this.t('close_sidebar')}">
-                            ${ICONS.close}
-                        </button>
-                    </div>
-                    <div class="mimir-tabs">
-                        <button class="mimir-tab is-active" data-tab="items" data-tooltip="${this.t('items')}">${ICONS.list}</button>
-                        <button class="mimir-tab" data-tab="outline" data-tooltip="${this.t('outline')}">${ICONS.tree}</button>
-                        <button class="mimir-tab" data-tab="collection" data-tooltip="${this.t('collection')}">${ICONS.stack}</button>
-                        <button class="mimir-tab" data-tab="bookmarks" data-tooltip="${this.t('bookmarks')}">${ICONS.bookmark}</button>
-                    </div>
-                    <div class="mimir-sidebar-body">
-                        <div id="mimir-structure-items" class="mimir-tab-panel" data-panel="items"></div>
-                        <div id="mimir-structure-outline" class="mimir-tab-panel mimir-hidden" data-panel="outline"></div>
-                        <div id="mimir-structure-collection" class="mimir-tab-panel mimir-hidden" data-panel="collection"></div>
-                        <div id="mimir-structure-bookmarks" class="mimir-tab-panel mimir-hidden" data-panel="bookmarks"></div>
+                    <div class="mimir-sidebar-shell">
+                        <div class="mimir-sidebar-header">
+                            <h2 class="mimir-eyebrow">${this.t('structure')}</h2>
+                            <button id="mimir-sidebar-close" class="mimir-icon-btn" title="${this.t('close_sidebar')}">
+                                ${ICONS.close}
+                            </button>
+                        </div>
+                        <div class="mimir-tabs">
+                            <button class="mimir-tab is-active" data-tab="items" data-tooltip="${this.t('items')}">${ICONS.list}</button>
+                            <button class="mimir-tab" data-tab="outline" data-tooltip="${this.t('outline')}">${ICONS.tree}</button>
+                            <button class="mimir-tab" data-tab="collection" data-tooltip="${this.t('collection')}">${ICONS.stack}</button>
+                            <button class="mimir-tab" data-tab="bookmarks" data-tooltip="${this.t('bookmarks')}">${ICONS.bookmark}</button>
+                        </div>
+                        <div class="mimir-sidebar-body">
+                            <div id="mimir-structure-items" class="mimir-tab-panel" data-panel="items"></div>
+                            <div id="mimir-structure-outline" class="mimir-tab-panel mimir-hidden" data-panel="outline"></div>
+                            <div id="mimir-structure-collection" class="mimir-tab-panel mimir-hidden" data-panel="collection"></div>
+                            <div id="mimir-structure-bookmarks" class="mimir-tab-panel mimir-hidden" data-panel="bookmarks"></div>
+                        </div>
                     </div>
                 </aside>
 
@@ -533,32 +549,34 @@ export class MimirExplorer {
                 </div>
 
                 <aside id="mimir-info" class="mimir-sidebar mimir-sidebar-right mimir-hidden">
-                    <div class="mimir-sidebar-header">
-                        <h2 class="mimir-eyebrow">${this.t('info')}</h2>
-                        <button id="mimir-info-close" class="mimir-icon-btn" title="${this.t('close_info')}">
-                            ${ICONS.close}
-                        </button>
-                    </div>
-                    <div class="mimir-tabs">
-                        <button class="mimir-tab is-active" data-tab="metadata" data-tooltip="${this.t('metadata')}">${ICONS.info}</button>
-                        <button class="mimir-tab" data-tab="fulltext" data-tooltip="${this.t('fulltext')}">${ICONS.fileText}</button>
-                        <button class="mimir-tab" data-tab="annotations" data-tooltip="${this.t('annotations')}">${ICONS.highlight}</button>
-                    </div>
-                    <div class="mimir-sidebar-body">
-                        <div id="mimir-metadata" class="mimir-tab-panel" data-panel="metadata"></div>
-                        <div id="mimir-fulltext" class="mimir-tab-panel mimir-hidden" data-panel="fulltext">
-                            <div class="mimir-annotations-toolbar">
-                                <span></span>
-                                <button id="mimir-fulltext-toggle" class="mimir-chip">${this.t('flow')}</button>
-                            </div>
-                            <div id="mimir-fulltext-body"></div>
+                    <div class="mimir-sidebar-shell">
+                        <div class="mimir-sidebar-header">
+                            <h2 class="mimir-eyebrow">${this.t('info')}</h2>
+                            <button id="mimir-info-close" class="mimir-icon-btn" title="${this.t('close_info')}">
+                                ${ICONS.close}
+                            </button>
                         </div>
-                        <div id="mimir-annotations" class="mimir-tab-panel mimir-hidden" data-panel="annotations">
-                            <div class="mimir-annotations-toolbar">
-                                <span id="mimir-annotations-count" class="mimir-annotations-count"></span>
-                                <button id="mimir-annotations-toggle" class="mimir-chip">${this.t('show_all')}</button>
+                        <div class="mimir-tabs">
+                            <button class="mimir-tab is-active" data-tab="metadata" data-tooltip="${this.t('metadata')}">${ICONS.info}</button>
+                            <button class="mimir-tab" data-tab="fulltext" data-tooltip="${this.t('fulltext')}">${ICONS.fileText}</button>
+                            <button class="mimir-tab" data-tab="annotations" data-tooltip="${this.t('annotations')}">${ICONS.highlight}</button>
+                        </div>
+                        <div class="mimir-sidebar-body">
+                            <div id="mimir-metadata" class="mimir-tab-panel" data-panel="metadata"></div>
+                            <div id="mimir-fulltext" class="mimir-tab-panel mimir-hidden" data-panel="fulltext">
+                                <div class="mimir-annotations-toolbar">
+                                    <span></span>
+                                    <button id="mimir-fulltext-toggle" class="mimir-chip">${this.t('flow')}</button>
+                                </div>
+                                <div id="mimir-fulltext-body"></div>
                             </div>
-                            <div id="mimir-annotations-list" class="mimir-annotations-list"></div>
+                            <div id="mimir-annotations" class="mimir-tab-panel mimir-hidden" data-panel="annotations">
+                                <div class="mimir-annotations-toolbar">
+                                    <span id="mimir-annotations-count" class="mimir-annotations-count"></span>
+                                    <button id="mimir-annotations-toggle" class="mimir-chip">${this.t('show_all')}</button>
+                                </div>
+                                <div id="mimir-annotations-list" class="mimir-annotations-list"></div>
+                            </div>
                         </div>
                     </div>
                 </aside>
@@ -568,8 +586,10 @@ export class MimirExplorer {
         this.els = {
             root: this.container.querySelector('#mimir-root'),
             sidebar: this.container.querySelector('#mimir-sidebar'),
+            sidebarShell: this.container.querySelector('#mimir-sidebar .mimir-sidebar-shell'),
             sidebarClose: this.container.querySelector('#mimir-sidebar-close'),
             info: this.container.querySelector('#mimir-info'),
+            infoShell: this.container.querySelector('#mimir-info .mimir-sidebar-shell'),
             infoClose: this.container.querySelector('#mimir-info-close'),
             osd: this.container.querySelector('#mimir-osd'),
             regionBlur: this.container.querySelector('#mimir-region-blur'),
@@ -691,6 +711,7 @@ export class MimirExplorer {
                 blue: this.container.querySelector('#mimir-filter-blue-slider')
             }
         };
+        if (this.isSafariBrowser) this.els.root.classList.add('mimir-browser-safari');
 
         this.initDarkMode();
         this.injectStyles();
@@ -773,7 +794,7 @@ export class MimirExplorer {
 
             .mimir-topbar {
                 position: absolute; top: 1.5rem; left: 1.5rem; right: 1.5rem;
-                z-index: 30; pointer-events: none; opacity: 0;
+                z-index: 50; pointer-events: none; opacity: 0;
                 transition: opacity 0.4s ease;
             }
             .mimir-topbar-inner {
@@ -854,20 +875,53 @@ export class MimirExplorer {
             .mimir-icon { width: 20px; height: 20px; }
 
             .mimir-sidebar {
+                --mimir-panel-width: 20rem;
+                position: relative;
                 width: 0;
-                border-right: 1px solid rgba(17,17,17,0.08);
-                background: rgba(255,255,255,0.92);
-                backdrop-filter: blur(12px);
-                overflow-y: auto; overflow-x: hidden; transition: width 0.4s ease;
-                position: relative; z-index: 40;
                 flex: 0 0 auto;
                 min-width: 0;
+                z-index: 40;
                 pointer-events: none;
+                overflow: hidden;
+                transition: width 0.18s ease;
+                contain: layout paint style;
             }
-            .mimir-sidebar.mimir-sidebar-open { pointer-events: auto; }
+            .mimir-sidebar.mimir-sidebar-open {
+                pointer-events: auto;
+                width: var(--mimir-panel-width);
+            }
+            .mimir-sidebar-shell {
+                width: var(--mimir-panel-width);
+                height: 100%;
+                border-right: 1px solid rgba(17,17,17,0.08);
+                background: rgba(255,255,255,0.92);
+                color-scheme: light;
+                backdrop-filter: blur(12px);
+                -webkit-backdrop-filter: blur(12px);
+                overflow-y: auto;
+                overflow-x: hidden;
+                box-shadow: 0 18px 40px rgba(17,17,17,0.18);
+                transform: translate3d(-1rem, 0, 0);
+                opacity: 0;
+                will-change: transform, opacity;
+                transition: transform 0.2s ease, opacity 0.18s ease;
+            }
+            .mimir-sidebar.mimir-sidebar-shell-open .mimir-sidebar-shell {
+                transform: translate3d(0, 0, 0);
+                opacity: 1;
+            }
             .mimir-sidebar-right {
+                margin-left: auto;
+            }
+            .mimir-sidebar-right .mimir-sidebar-shell {
                 border-right: none;
                 border-left: 1px solid rgba(17,17,17,0.08);
+                transform: translate3d(1rem, 0, 0);
+            }
+            #mimir-root.mimir-browser-safari.mimir-panel-animating .mimir-sidebar-shell {
+                backdrop-filter: none;
+                -webkit-backdrop-filter: none;
+                box-shadow: 0 8px 18px rgba(17,17,17,0.12);
             }
             .mimir-sidebar-header {
                 display: flex; align-items: center; justify-content: space-between;
@@ -1741,25 +1795,25 @@ export class MimirExplorer {
                     position: absolute; top: 0; bottom: 0; left: 0;
                     box-shadow: 0 20px 40px rgba(17,17,17,0.2);
                 }
-                .mimir-sidebar-right { left: auto; right: 0; }
+                .mimir-sidebar-right { left: auto; right: 0; margin-left: 0; }
             }
 
             /* Scrollbar styling */
-            .mimir-sidebar {
+            .mimir-sidebar-shell {
                 scrollbar-width: thin;
                 scrollbar-color: rgba(120,120,120,0.5) transparent;
             }
-            .mimir-sidebar::-webkit-scrollbar {
+            .mimir-sidebar-shell::-webkit-scrollbar {
                 width: 6px;
             }
-            .mimir-sidebar::-webkit-scrollbar-track {
+            .mimir-sidebar-shell::-webkit-scrollbar-track {
                 background: transparent;
             }
-            .mimir-sidebar::-webkit-scrollbar-thumb {
+            .mimir-sidebar-shell::-webkit-scrollbar-thumb {
                 background-color: rgba(120,120,120,0.4);
                 border-radius: 999px;
             }
-            .mimir-sidebar::-webkit-scrollbar-thumb:hover {
+            .mimir-sidebar-shell::-webkit-scrollbar-thumb:hover {
                 background-color: rgba(120,120,120,0.7);
             }
 
@@ -1993,10 +2047,11 @@ export class MimirExplorer {
             #mimir-root.mimir-dark .mimir-bottom-bar,
             #mimir-root.mimir-dark .mimir-filter-bar,
             #mimir-root.mimir-dark .mimir-empty-card,
-            #mimir-root.mimir-dark .mimir-sidebar {
+            #mimir-root.mimir-dark .mimir-sidebar-shell {
                 background: rgba(17,17,17,0.9);
                 border-color: rgba(255,255,255,0.08);
                 color: #e5e7eb;
+                color-scheme: dark;
             }
             #mimir-root.mimir-dark .mimir-lang-pop {
                 background: rgba(17,17,17,0.9);
@@ -2013,8 +2068,8 @@ export class MimirExplorer {
                 color: #e5e7eb;
             }
             #mimir-root.mimir-dark .mimir-render-mode { color: #e5e7eb; }
-            #mimir-root.mimir-dark .mimir-sidebar {
-                scrollbar-color: rgba(156,163,175,0.5) transparent;
+            #mimir-root.mimir-dark .mimir-sidebar-shell {
+                scrollbar-color: rgba(156,163,175,0.6) rgba(255,255,255,0.04);
             }
             #mimir-root.mimir-dark .mimir-tabs {
                 border-bottom-color: rgba(255,255,255,0.08);
@@ -2046,11 +2101,14 @@ export class MimirExplorer {
             #mimir-root.mimir-dark .mimir-filter-slider::-moz-range-track {
                 background: rgba(255,255,255,0.2);
             }
-            #mimir-root.mimir-dark .mimir-sidebar::-webkit-scrollbar-thumb {
-                background-color: rgba(156,163,175,0.45);
+            #mimir-root.mimir-dark .mimir-sidebar-shell::-webkit-scrollbar-track {
+                background: rgba(255,255,255,0.04);
             }
-            #mimir-root.mimir-dark .mimir-sidebar::-webkit-scrollbar-thumb:hover {
-                background-color: rgba(156,163,175,0.7);
+            #mimir-root.mimir-dark .mimir-sidebar-shell::-webkit-scrollbar-thumb {
+                background-color: rgba(156,163,175,0.6);
+            }
+            #mimir-root.mimir-dark .mimir-sidebar-shell::-webkit-scrollbar-thumb:hover {
+                background-color: rgba(229,231,235,0.55);
             }
             #mimir-root.mimir-dark .mimir-card {
                 background: rgba(24,24,24,0.85);
@@ -2545,6 +2603,8 @@ export class MimirExplorer {
     updateBottomBarOffset() {
         if (!this.els.bottomBar || !this.els.root) return;
         const height = this.els.bottomBar.offsetHeight || 56;
+        if (height === this.lastBottomBarHeight) return;
+        this.lastBottomBarHeight = height;
         this.els.root.style.setProperty('--mimir-bottom-height', `${height}px`);
     }
 
@@ -2581,6 +2641,14 @@ export class MimirExplorer {
 
     applyFilters() {
         const { brightness, contrast, greyscale, red, green, blue } = this.filterState;
+        const hasColorMatrix =
+            greyscale !== 0 ||
+            red !== 1 ||
+            green !== 1 ||
+            blue !== 1;
+        const hasToneAdjust =
+            brightness !== 1 ||
+            contrast !== 1;
         if (this.els.colorMatrix) {
             const values = [
                 `${red} 0 0 0 0`,
@@ -2590,11 +2658,26 @@ export class MimirExplorer {
             ].join(' ');
             this.els.colorMatrix.setAttribute('values', values);
         }
-        const filter = `brightness(${brightness}) contrast(${contrast}) grayscale(${greyscale}) url(#mimir-color-filter)`;
+        const filterParts = [];
+        if (hasToneAdjust) {
+            if (brightness !== 1) filterParts.push(`brightness(${brightness})`);
+            if (contrast !== 1) filterParts.push(`contrast(${contrast})`);
+        }
+        if (greyscale !== 0) filterParts.push(`grayscale(${greyscale})`);
+        if (hasColorMatrix) filterParts.push('url(#mimir-color-filter)');
+        const filter = filterParts.join(' ');
         const targets = this.getOsdTargets();
-        targets.forEach(el => { el.style.filter = filter; });
+        const osdFilter = filter || 'none';
+        if (osdFilter !== this.lastAppliedOsdFilter) {
+            targets.forEach(el => { el.style.filter = osdFilter; });
+            this.lastAppliedOsdFilter = osdFilter;
+        }
         const media = this.els.av?.querySelector('.mimir-av-media');
-        if (media) media.style.filter = filter;
+        const mediaFilter = filter || 'none';
+        if (media && mediaFilter !== this.lastAppliedMediaFilter) {
+            media.style.filter = mediaFilter;
+            this.lastAppliedMediaFilter = mediaFilter;
+        }
     }
 
     applyTransforms() {
@@ -2607,12 +2690,22 @@ export class MimirExplorer {
         const scaleX = (!canFlip && flipH) ? -1 : 1;
         const scaleY = flipV ? -1 : 1;
         const cssRotate = canRotate ? 0 : rotate;
+        const needsCssTransform = cssRotate !== 0 || scaleX !== 1 || scaleY !== 1;
         const targets = this.getOsdTargets();
-        targets.forEach(el => { el.style.transform = `rotate(${cssRotate}deg) scale(${scaleX}, ${scaleY})`; });
+        const osdTransform = needsCssTransform ? `rotate(${cssRotate}deg) scale(${scaleX}, ${scaleY})` : 'none';
+        if (osdTransform !== this.lastAppliedOsdTransform) {
+            targets.forEach(el => { el.style.transform = osdTransform; });
+            this.lastAppliedOsdTransform = osdTransform;
+        }
         const media = this.els.av?.querySelector('.mimir-av-media');
         if (media) {
             const zoom = this.zoomValue || 1;
-            media.style.transform = `scale(${zoom}) rotate(${rotate}deg) scale(${scaleX}, ${scaleY})`;
+            const needsMediaTransform = zoom !== 1 || rotate !== 0 || scaleX !== 1 || scaleY !== 1;
+            const mediaTransform = needsMediaTransform ? `scale(${zoom}) rotate(${rotate}deg) scale(${scaleX}, ${scaleY})` : 'none';
+            if (mediaTransform !== this.lastAppliedMediaTransform) {
+                media.style.transform = mediaTransform;
+                this.lastAppliedMediaTransform = mediaTransform;
+            }
         }
         if (this.els.btns.flipH) this.els.btns.flipH.classList.toggle('mimir-filter-active', !!flipH);
         if (this.els.btns.flipV) this.els.btns.flipV.classList.toggle('mimir-filter-active', !!flipV);
@@ -2731,14 +2824,18 @@ export class MimirExplorer {
     }
 
     getOsdTargets() {
+        if (this.cachedOsdTargets?.length && this.cachedOsdTargets.every(el => el?.isConnected)) {
+            return this.cachedOsdTargets;
+        }
         const targets = [];
         if (this.els.osd) targets.push(this.els.osd);
         if (this.els.osd) {
             const canvas = this.els.osd.querySelector('.openseadragon-canvas');
             if (canvas) targets.push(canvas);
             const innerCanvas = this.els.osd.querySelector('canvas');
-            if (innerCanvas) targets.push(innerCanvas);
+            if (innerCanvas && innerCanvas !== canvas) targets.push(innerCanvas);
         }
+        this.cachedOsdTargets = targets;
         return targets;
     }
 
@@ -2799,6 +2896,25 @@ export class MimirExplorer {
 
     getPanelWidth() { return 320; }
 
+    getPanelTransitionMs() { return 180; }
+
+    getOverlayThrottleMs() {
+        return this.isSafariBrowser ? 80 : 33;
+    }
+
+    markPanelTransition() {
+        this.panelTransitionActive = true;
+        if (this.els.root) this.els.root.classList.add('mimir-panel-animating');
+        if (this.panelTransitionTimer) clearTimeout(this.panelTransitionTimer);
+        this.panelTransitionTimer = setTimeout(() => {
+            this.panelTransitionActive = false;
+            this.panelTransitionTimer = null;
+            if (this.els.root) this.els.root.classList.remove('mimir-panel-animating');
+            this.updateBottomBarOffset();
+            this.scheduleOverlayUpdate();
+        }, this.getPanelTransitionMs() + 20);
+    }
+
     getAvailableStageWidth(leftOpen, rightOpen) {
         const panelW = this.getPanelWidth();
         const total = window.innerWidth || this.container.clientWidth || 0;
@@ -2825,14 +2941,26 @@ export class MimirExplorer {
     }
 
     setLeftOpen(open) {
-        this.els.sidebar.style.width = open ? '20rem' : '0';
-        this.els.sidebar.classList.toggle('mimir-sidebar-open', open);
+        this.markPanelTransition();
+        if (open) {
+            this.els.sidebar.classList.add('mimir-sidebar-open');
+            requestAnimationFrame(() => this.els.sidebar.classList.add('mimir-sidebar-shell-open'));
+        } else {
+            this.els.sidebar.classList.remove('mimir-sidebar-shell-open');
+            this.els.sidebar.classList.remove('mimir-sidebar-open');
+        }
         this.els.btns.sidebarToggle.classList.toggle('mimir-hidden', open);
     }
 
     setRightOpen(open) {
-        this.els.info.style.width = open ? '20rem' : '0';
-        this.els.info.classList.toggle('mimir-sidebar-open', open);
+        this.markPanelTransition();
+        if (open) {
+            this.els.info.classList.add('mimir-sidebar-open');
+            requestAnimationFrame(() => this.els.info.classList.add('mimir-sidebar-shell-open'));
+        } else {
+            this.els.info.classList.remove('mimir-sidebar-shell-open');
+            this.els.info.classList.remove('mimir-sidebar-open');
+        }
         this.els.btns.infoToggle.classList.toggle('mimir-hidden', open);
     }
 
@@ -3449,12 +3577,6 @@ export class MimirExplorer {
                 width: 1
             }));
         }
-        const isSafari = (() => {
-            const ua = navigator?.userAgent || '';
-            const isWebkit = /Safari/i.test(ua) && !/Chrome|Chromium|Edg/i.test(ua);
-            const isAppleMobile = /iPad|iPhone|iPod/i.test(ua);
-            return isWebkit || isAppleMobile;
-        })();
         const supportsWebGL = (() => {
             try {
                 const canvas = document.createElement('canvas');
@@ -3462,12 +3584,13 @@ export class MimirExplorer {
             } catch {
                 return false;
             }
-        })() && !isSafari;
+        })();
         const crossOriginPolicy = this.osdUseAjax ? 'Anonymous' : false;
         this.osdExplorer = OpenSeadragon({
             element: this.els.osd, tileSources: finalSources, sequenceMode: !this.isBookMode && !this.isContinuousMode,
             showNavigationControl: false, showSequenceControl: false, prefixUrl: "",
             blendTime: 0.1, animationTime: 0.5, preserveViewport: !this.isBookMode && !this.isContinuousMode,
+            springStiffness: 6.5,
             visibilityRatio: 1, minZoomLevel: 0, defaultZoomLevel: 0, homeFillsExplorer: true,
             drawer: ['auto', 'webgl', 'canvas', 'html'],
             crossOriginPolicy,
@@ -3479,7 +3602,6 @@ export class MimirExplorer {
                 useAjax: this.osdUseAjax,
                 crossOriginPolicy,
                 webgl: supportsWebGL,
-                isSafari,
                 tiles: this.tileSources.length
             });
             const rect = this.els.osd?.getBoundingClientRect?.();
@@ -3550,8 +3672,8 @@ export class MimirExplorer {
         this.osdExplorer.addHandler('open-failed', (evt) => {
             if (this.debug) console.warn('[Mimir] OSD open failed', evt);
         });
-        this.osdExplorer.addHandler('animation', () => { this.scheduleOverlayUpdate(); });
-        this.osdExplorer.addHandler('resize', () => { this.scheduleOverlayUpdate(); });
+        this.osdExplorer.addHandler('animation', () => { this.scheduleOverlayUpdate(true); });
+        this.osdExplorer.addHandler('resize', () => { this.scheduleOverlayUpdate(true); });
         if (!this.isBookMode) {
             this.osdExplorer.addHandler('page', (e) => this.updatePageNum(e.page));
         }
@@ -4463,10 +4585,26 @@ export class MimirExplorer {
         });
     }
 
-    scheduleOverlayUpdate() {
+    scheduleOverlayUpdate(throttled = false) {
+        if (this.panelTransitionActive) return;
+        if (!this.osdExplorer && !this.hasRegion) return;
+        if (!this.currentAnnotations?.length && !this.currentFulltextLines?.length && !this.hasRegion) return;
+        if (throttled) {
+            const now = Date.now();
+            const wait = this.getOverlayThrottleMs() - (now - this.lastOverlayUpdateAt);
+            if (wait > 0) {
+                if (this.overlayThrottleTimer) return;
+                this.overlayThrottleTimer = setTimeout(() => {
+                    this.overlayThrottleTimer = null;
+                    this.scheduleOverlayUpdate(false);
+                }, wait);
+                return;
+            }
+        }
         if (this.overlayUpdatePending) return;
         this.overlayUpdatePending = true;
         requestAnimationFrame(() => {
+            this.lastOverlayUpdateAt = Date.now();
             this.updateAnnotationOverlays();
             this.updateFulltextOverlays();
             this.updateRegionBlurOverlay();
@@ -7168,6 +7306,12 @@ export class MimirExplorer {
         this.els.av.innerHTML = ''; this.els.threeD.innerHTML = ''; this.avPlayer = null;
         this.destroyThree();
         if (this.osdExplorer) { this.osdExplorer.destroy(); this.osdExplorer = null; }
+        this.cachedOsdTargets = null;
+        this.lastAppliedOsdFilter = null;
+        this.lastAppliedMediaFilter = null;
+        this.lastAppliedOsdTransform = null;
+        this.lastAppliedMediaTransform = null;
+        this.lastBottomBarHeight = null;
         this.avItems = []; this.modelItems = []; this.currentAvIndex = 0; this.currentModelIndex = 0;
         this.currentParsed = null;
         this.currentAnnotations = [];

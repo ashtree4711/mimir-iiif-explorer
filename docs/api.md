@@ -123,7 +123,7 @@ Use this when:
 
 Accepts a manifest object and returns the normalized internal representation used by the renderer.
 
-This is useful for debugging, tests, or custom host-side inspection, but should still be treated as semi-internal because the normalized shape may evolve over time. See [codex/iiif_model.md](/Users/markeschweiler/Documents/GitHub/mimir-iiif-explorer/codex/iiif_model.md).
+This is useful for debugging, tests, or custom host-side inspection, but should still be treated as semi-internal because the normalized shape may evolve over time.
 
 ### `resetExplorers()`
 
