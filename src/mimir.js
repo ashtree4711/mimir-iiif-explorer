@@ -137,6 +137,14 @@ export class MimirExplorer {
             logoUrlDark: logoDark,
             ...options
         };
+        this.fulltextOverlayPalette = [
+            { id: 'default', hex: this.options.primaryColor },
+            { id: 'cyan', hex: '#06b6d4' },
+            { id: 'amber', hex: '#f59e0b' },
+            { id: 'rose', hex: '#f43f5e' },
+            { id: 'emerald', hex: '#10b981' },
+            { id: 'violet', hex: '#8b5cf6' }
+        ];
 
         this.zoomValue = 1;
         this.filterOpen = false;
@@ -228,6 +236,7 @@ export class MimirExplorer {
             const ua = navigator?.userAgent || '';
             return /Safari/i.test(ua) && !/Chrome|Chromium|Edg/i.test(ua);
         })();
+        this.fulltextOverlayColor = this.getCookie('mimir_fulltext_color') || 'default';
         this.missingObjectUrls = [];
         this.missingPageIndexes = new Set();
         this.pendingStartTime = null;
@@ -565,7 +574,7 @@ export class MimirExplorer {
                             <div id="mimir-metadata" class="mimir-tab-panel" data-panel="metadata"></div>
                             <div id="mimir-fulltext" class="mimir-tab-panel mimir-hidden" data-panel="fulltext">
                                 <div class="mimir-annotations-toolbar">
-                                    <span></span>
+                                    <div id="mimir-fulltext-color-palette" class="mimir-color-palette"></div>
                                     <button id="mimir-fulltext-toggle" class="mimir-chip">${this.t('flow')}</button>
                                 </div>
                                 <div id="mimir-fulltext-body"></div>
@@ -621,6 +630,7 @@ export class MimirExplorer {
             fulltextContainer: this.container.querySelector('#mimir-fulltext'),
             fulltextBody: this.container.querySelector('#mimir-fulltext-body'),
             fulltextToggle: this.container.querySelector('#mimir-fulltext-toggle'),
+            fulltextColorPalette: this.container.querySelector('#mimir-fulltext-color-palette'),
             annotationsContainer: this.container.querySelector('#mimir-annotations'),
             annotationsToggle: this.container.querySelector('#mimir-annotations-toggle'),
             annotationsCount: this.container.querySelector('#mimir-annotations-count'),
@@ -1278,6 +1288,54 @@ export class MimirExplorer {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
+                gap: 0.75rem;
+            }
+            .mimir-color-palette {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.4rem;
+                flex-wrap: wrap;
+            }
+            .mimir-color-swatch {
+                position: relative;
+                width: 1.1rem;
+                height: 1.1rem;
+                padding: 0;
+                border-radius: 999px;
+                border: 1px solid rgba(255,255,255,0.18);
+                background: transparent;
+                overflow: hidden;
+                box-shadow: 0 0 0 1px rgba(17,17,17,0.12);
+                cursor: pointer;
+                transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+            }
+            .mimir-color-swatch::before {
+                content: '';
+                position: absolute;
+                inset: 2px;
+                border-radius: inherit;
+                background: var(--mimir-swatch-fill, transparent);
+            }
+            .mimir-color-swatch:hover {
+                transform: scale(1.08);
+            }
+            .mimir-color-swatch.is-active {
+                border-color: rgba(var(--mimir-primary-rgb), 0.55);
+                box-shadow: 0 0 0 2px rgba(var(--mimir-primary-rgb), 0.18);
+            }
+            .mimir-color-swatch[data-color-id="default"] {
+                --mimir-swatch-fill: linear-gradient(135deg, var(--mimir-primary) 0 50%, rgba(255,255,255,0.14) 50% 100%);
+            }
+            .mimir-color-swatch[data-color-id="custom"] {
+                --mimir-swatch-fill: conic-gradient(from 180deg, #ef4444, #f59e0b, #eab308, #22c55e, #06b6d4, #3b82f6, #8b5cf6, #ec4899, #ef4444);
+            }
+            .mimir-color-picker-input {
+                position: absolute;
+                inset: 0;
+                width: 100%;
+                height: 100%;
+                opacity: 0;
+                cursor: pointer;
             }
             .mimir-annotations-count {
                 font-size: 0.7rem;
@@ -1467,20 +1525,20 @@ export class MimirExplorer {
                 color: #f8fafc;
             }
             .mimir-ocr-span.is-active {
-                background: rgba(var(--mimir-primary-rgb), 0.2);
+                background: rgba(var(--mimir-fulltext-rgb, var(--mimir-primary-rgb)), 0.2);
             }
             .mimir-ocr-span.is-hover {
-                background: rgba(var(--mimir-primary-rgb), 0.12);
+                background: rgba(var(--mimir-fulltext-rgb, var(--mimir-primary-rgb)), 0.12);
             }
             #mimir-root.mimir-dark .mimir-ocr-span.is-active {
-                background: rgba(var(--mimir-primary-rgb), 0.4);
+                background: rgba(var(--mimir-fulltext-rgb, var(--mimir-primary-rgb)), 0.4);
             }
             #mimir-root.mimir-dark .mimir-ocr-span.is-hover {
-                background: rgba(var(--mimir-primary-rgb), 0.25);
+                background: rgba(var(--mimir-fulltext-rgb, var(--mimir-primary-rgb)), 0.25);
             }
             .mimir-ocr-box {
                 position: absolute;
-                border: 1.5px solid rgba(var(--mimir-primary-rgb), 0.85);
+                border: 1.5px solid rgba(var(--mimir-fulltext-rgb, var(--mimir-primary-rgb)), 0.85);
                 background: transparent;
                 border-radius: 0.3rem;
                 pointer-events: auto;
@@ -1488,8 +1546,8 @@ export class MimirExplorer {
                 transition: opacity 0.15s ease;
             }
             .mimir-ocr-box.is-active {
-                background: rgba(var(--mimir-primary-rgb), 0.18);
-                border-color: rgba(var(--mimir-primary-rgb), 1);
+                background: rgba(var(--mimir-fulltext-rgb, var(--mimir-primary-rgb)), 0.18);
+                border-color: rgba(var(--mimir-fulltext-rgb, var(--mimir-primary-rgb)), 1);
                 opacity: 1;
             }
             .mimir-list-label {
@@ -2206,6 +2264,7 @@ export class MimirExplorer {
         const hex = this.options.primaryColor.replace('#', '');
         const r = parseInt(hex.substring(0, 2), 16), g = parseInt(hex.substring(2, 4), 16), b = parseInt(hex.substring(4, 6), 16);
         this.container.style.setProperty('--mimir-primary-rgb', `${r}, ${g}, ${b}`);
+        this.applyFulltextOverlayColor(this.fulltextOverlayColor);
     }
 
     initDarkMode() {
@@ -2591,6 +2650,7 @@ export class MimirExplorer {
                 this.updateFulltextPanel(this.osdExplorer?.currentPage?.() || 0);
             };
         }
+        this.renderFulltextColorPalette();
     }
 
     bindLayoutRules() {
@@ -2897,6 +2957,96 @@ export class MimirExplorer {
     getPanelWidth() { return 320; }
 
     getPanelTransitionMs() { return 180; }
+
+    normalizeHexColor(value) {
+        if (typeof value !== 'string') return '';
+        const normalized = value.trim().toLowerCase();
+        return /^#[0-9a-f]{6}$/.test(normalized) ? normalized : '';
+    }
+
+    applyFulltextOverlayColor(value = 'default') {
+        const paletteEntry = this.fulltextOverlayPalette.find(entry => entry.id === value);
+        const hex = this.normalizeHexColor(paletteEntry?.hex || value) || this.options.primaryColor;
+        const rgbHex = hex.replace('#', '');
+        const r = parseInt(rgbHex.substring(0, 2), 16);
+        const g = parseInt(rgbHex.substring(2, 4), 16);
+        const b = parseInt(rgbHex.substring(4, 6), 16);
+        this.fulltextOverlayColor = paletteEntry ? paletteEntry.id : hex;
+        this.container.style.setProperty('--mimir-fulltext-rgb', `${r}, ${g}, ${b}`);
+    }
+
+    updateFulltextColorPaletteSelection() {
+        if (!this.els.fulltextColorPalette) return;
+        const selected = this.fulltextOverlayColor || 'default';
+        const customHex = this.normalizeHexColor(selected);
+        this.els.fulltextColorPalette.querySelectorAll('[data-color-id]').forEach((swatch) => {
+            const colorId = swatch.getAttribute('data-color-id') || '';
+            swatch.classList.toggle('is-active', colorId === selected);
+        });
+        const customSwatch = this.els.fulltextColorPalette.querySelector('[data-role="custom-swatch"]');
+        if (customSwatch) {
+            customSwatch.classList.toggle('is-active', !!customHex);
+            if (customHex) {
+                customSwatch.style.setProperty('--mimir-swatch-fill', `linear-gradient(${customHex}, ${customHex}), conic-gradient(from 180deg, #ef4444, #f59e0b, #eab308, #22c55e, #06b6d4, #3b82f6, #8b5cf6, #ec4899, #ef4444)`);
+            } else {
+                customSwatch.style.removeProperty('--mimir-swatch-fill');
+            }
+        }
+        const customInput = this.els.fulltextColorPalette.querySelector('#mimir-fulltext-custom-color');
+        if (customInput && customHex && customInput.value !== customHex) {
+            customInput.value = customHex;
+        }
+    }
+
+    renderFulltextColorPalette() {
+        if (!this.els.fulltextColorPalette) return;
+        const selected = this.fulltextOverlayColor || 'default';
+        const customHex = this.normalizeHexColor(selected);
+        const paletteMarkup = [];
+        this.fulltextOverlayPalette.forEach((entry, index) => {
+            const active = entry.id === selected ? ' is-active' : '';
+            const style = entry.id === 'default' ? '' : ` style="--mimir-swatch-fill:${entry.hex}"`;
+            const label = entry.id === 'default' ? this.t('overlay_color_default') : `${this.t('overlay_color')}: ${entry.hex}`;
+            paletteMarkup.push(`<button type="button" class="mimir-color-swatch${active}" data-color-id="${entry.id}"${style} title="${this.escapeHtml(label)}" aria-label="${this.escapeHtml(label)}"></button>`);
+            if (index === 0) {
+                const customLabel = customHex
+                    ? `${this.t('overlay_color_custom')}: ${customHex}`
+                    : this.t('overlay_color_custom');
+                const customActive = customHex ? ' is-active' : '';
+                const customStyle = customHex
+                    ? ` style="--mimir-swatch-fill: linear-gradient(${customHex}, ${customHex}), conic-gradient(from 180deg, #ef4444, #f59e0b, #eab308, #22c55e, #06b6d4, #3b82f6, #8b5cf6, #ec4899, #ef4444);"`
+                    : '';
+                paletteMarkup.push(`<label class="mimir-color-swatch${customActive}" data-role="custom-swatch"${customStyle} title="${this.escapeHtml(customLabel)}" aria-label="${this.escapeHtml(customLabel)}"><input id="mimir-fulltext-custom-color" class="mimir-color-picker-input" type="color" value="${customHex || this.options.primaryColor}" aria-label="${this.escapeHtml(this.t('overlay_color_custom'))}"></label>`);
+            }
+        });
+        this.els.fulltextColorPalette.innerHTML = paletteMarkup.join('');
+        this.els.fulltextColorPalette.querySelectorAll('[data-color-id]').forEach((btn) => {
+            btn.onclick = () => {
+                const colorId = btn.getAttribute('data-color-id') || 'default';
+                this.applyFulltextOverlayColor(colorId);
+                if (colorId === 'default') {
+                    this.clearCookie('mimir_fulltext_color');
+                } else {
+                    this.setCookie('mimir_fulltext_color', colorId);
+                }
+                this.renderFulltextColorPalette();
+            };
+        });
+        const customInput = this.els.fulltextColorPalette.querySelector('#mimir-fulltext-custom-color');
+        if (customInput) {
+            customInput.onpointerdown = (event) => event.stopPropagation();
+            customInput.onclick = (event) => event.stopPropagation();
+            const applyCustomColor = () => {
+                const hex = this.normalizeHexColor(customInput.value);
+                if (!hex) return;
+                this.applyFulltextOverlayColor(hex);
+                this.setCookie('mimir_fulltext_color', hex);
+                this.updateFulltextColorPaletteSelection();
+            };
+            customInput.oninput = applyCustomColor;
+            customInput.onchange = applyCustomColor;
+        }
+    }
 
     getOverlayThrottleMs() {
         return this.isSafariBrowser ? 80 : 33;
@@ -5778,6 +5928,9 @@ export class MimirExplorer {
                 show_selected: 'Show selected',
                 flow: 'Flow',
                 lines: 'Lines',
+                overlay_color: 'Overlay color',
+                overlay_color_default: 'Overlay color: default',
+                overlay_color_custom: 'Overlay color: custom',
                 no_metadata: 'No metadata available.',
                 no_fulltext: 'No fulltext available.',
                 no_fulltext_left: 'No fulltext for left page.',
@@ -5878,6 +6031,9 @@ export class MimirExplorer {
                 show_selected: 'Auswahl zeigen',
                 flow: 'Fließtext',
                 lines: 'Zeilen',
+                overlay_color: 'Overlay-Farbe',
+                overlay_color_default: 'Overlay-Farbe: Standard',
+                overlay_color_custom: 'Overlay-Farbe: frei wählen',
                 no_metadata: 'Keine Metadaten verfügbar.',
                 no_fulltext: 'Kein Volltext verfügbar.',
                 no_fulltext_left: 'Kein Volltext für linke Seite.',
@@ -5978,6 +6134,9 @@ export class MimirExplorer {
                 show_selected: 'Afficher la sélection',
                 flow: 'Texte continu',
                 lines: 'Lignes',
+                overlay_color: 'Couleur de surlignage',
+                overlay_color_default: 'Couleur de surlignage: par défaut',
+                overlay_color_custom: 'Couleur de surlignage: personnalisée',
                 no_metadata: 'Aucune métadonnée disponible.',
                 no_fulltext: 'Aucun texte intégral disponible.',
                 no_fulltext_left: 'Pas de texte pour la page gauche.',
@@ -6078,6 +6237,9 @@ export class MimirExplorer {
                 show_selected: 'Mostra selezionati',
                 flow: 'Testo continuo',
                 lines: 'Righe',
+                overlay_color: 'Colore evidenziazione',
+                overlay_color_default: 'Colore evidenziazione: predefinito',
+                overlay_color_custom: 'Colore evidenziazione: personalizzato',
                 no_metadata: 'Nessun metadato disponibile.',
                 no_fulltext: 'Nessun testo completo disponibile.',
                 no_fulltext_left: 'Nessun testo per la pagina sinistra.',
@@ -6178,6 +6340,9 @@ export class MimirExplorer {
                 show_selected: 'Mostrar selección',
                 flow: 'Texto continuo',
                 lines: 'Líneas',
+                overlay_color: 'Color de resaltado',
+                overlay_color_default: 'Color de resaltado: predeterminado',
+                overlay_color_custom: 'Color de resaltado: personalizado',
                 no_metadata: 'No hay metadatos disponibles.',
                 no_fulltext: 'No hay texto completo disponible.',
                 no_fulltext_left: 'Sin texto para la página izquierda.',
@@ -6278,6 +6443,9 @@ export class MimirExplorer {
                 show_selected: 'Selectie tonen',
                 flow: 'Doorlopende tekst',
                 lines: 'Regels',
+                overlay_color: 'Overlaykleur',
+                overlay_color_default: 'Overlaykleur: standaard',
+                overlay_color_custom: 'Overlaykleur: aangepast',
                 no_metadata: 'Geen metadata beschikbaar.',
                 no_fulltext: 'Geen volledige tekst beschikbaar.',
                 no_fulltext_left: 'Geen tekst voor de linkerpagina.',
@@ -6577,6 +6745,9 @@ export class MimirExplorer {
         }
         if (this.els.fulltextToggle) {
             this.els.fulltextToggle.textContent = this.fulltextMode === 'lines' ? this.t('flow') : this.t('lines');
+        }
+        if (this.els.fulltextColorPalette) {
+            this.renderFulltextColorPalette();
         }
         if (this.els.annotationsToggle) {
             const isAll = this.annotationMode === 'all';
