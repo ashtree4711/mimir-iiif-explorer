@@ -16,7 +16,7 @@ Mimir IIIF Explorer is a modular IIIF viewer focused on image, AV, and 3D experi
 - Image filters: rotate, flip, brightness, contrast, greyscale, RGB channels.
 - Region focus for ImageApiSelector with optional blur outside region.
 - Download current image as full-res JPEG.
-- Dark mode with auto/app/manual modes.
+- Dark mode with auto/light/dark/app modes.
 - Responsive layout with adaptive panel behavior.
 - Cookie-based bookmarks (grouped by manifest and page).
 - Annotations with list + overlays, single/select and show-all modes.
@@ -44,7 +44,7 @@ const explorer = new MimirExplorer('mimir-container', {
   darkMode: 'auto'
 });
 
-await explorer.loadManifest('https://example.org/iiif/manifest.json');
+explorer.loadManifest('https://example.org/iiif/manifest.json');
 ```
 
 ## Theme Modes
