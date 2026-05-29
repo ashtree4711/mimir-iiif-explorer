@@ -1,7 +1,7 @@
 # Mimir IIIF Explorer
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://cdn.jsdelivr.net/npm/@mimir-iiif/explorer@latest/src/assets/mimir_logo_darkmode.png">
+  <source media="(prefers-color-scheme: dark)" srcset="https://cdn.jsdelivr.net/npm/@mimir-iiif/explorer@latest/src/assets/mimir_logo_blue.png">
   <img alt="Mimir logo" src="https://cdn.jsdelivr.net/npm/@mimir-iiif/explorer@latest/src/assets/mimir_logo_lightmode.png" width="320">
 </picture>
 
@@ -40,7 +40,7 @@ npm i @mimir-iiif/explorer
 import MimirExplorer from '@mimir-iiif/explorer';
 
 const explorer = new MimirExplorer('mimir-container', {
-  primaryColor: '#451F8D',
+  primaryColor: '#009dcc',
   darkMode: 'auto'
 });
 

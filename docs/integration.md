@@ -16,7 +16,7 @@ Basic usage:
 import MimirExplorer from '@mimir-iiif/explorer';
 
 const explorer = new MimirExplorer('mimir-container', {
-  primaryColor: '#451F8D',
+  primaryColor: '#009dcc',
   darkMode: 'auto'
 });
 

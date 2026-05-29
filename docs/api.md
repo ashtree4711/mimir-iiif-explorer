@@ -35,7 +35,7 @@ Container expectations
 ### Core options
 
 - `primaryColor: string`
-  Default: `#451F8D`
+  Default: `#009dcc`
   Used as the main accent color across controls and highlights.
 
 - `darkMode: 'auto' | 'light' | 'dark' | 'app'`
