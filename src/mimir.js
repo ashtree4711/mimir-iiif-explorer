@@ -131,7 +131,7 @@ export class MimirExplorer {
         }
         
         this.options = {
-            primaryColor: '#451F8D',
+            primaryColor: '#009dcc',
             darkMode: 'auto', // auto, light, dark, app
             logoUrl: logoLight,
             logoUrlDark: logoDark,
@@ -182,9 +182,12 @@ export class MimirExplorer {
         this.currentModelIndex = 0;
         this.threeState = null;
         this.cachedOsdTargets = null;
+        this.cachedOsdFilterTargets = null;
         this.lastAppliedOsdFilter = null;
+        this.lastAppliedOsdFilterTargets = null;
         this.lastAppliedMediaFilter = null;
         this.lastAppliedOsdTransform = null;
+        this.lastAppliedOsdTransformTargets = null;
         this.lastAppliedMediaTransform = null;
         this.lastBottomBarHeight = null;
         this.collectionCache = new Map();
@@ -778,7 +781,7 @@ export class MimirExplorer {
         const style = document.createElement('style');
         style.id = 'mimir-styles';
         style.textContent = `
-            :root { --mimir-primary: #4F46E5; }
+            :root { --mimir-primary: #009dcc; }
             #mimir-root {
                 position: absolute; inset: 0;
                 display: flex; items-stretch; overflow: hidden;
@@ -2699,7 +2702,7 @@ export class MimirExplorer {
         }
     }
 
-    applyFilters() {
+    applyFilters(forceRefreshTargets = false) {
         const { brightness, contrast, greyscale, red, green, blue } = this.filterState;
         const hasColorMatrix =
             greyscale !== 0 ||
@@ -2726,11 +2729,14 @@ export class MimirExplorer {
         if (greyscale !== 0) filterParts.push(`grayscale(${greyscale})`);
         if (hasColorMatrix) filterParts.push('url(#mimir-color-filter)');
         const filter = filterParts.join(' ');
-        const targets = this.getOsdTargets();
+        const targets = this.getOsdFilterTargets(forceRefreshTargets);
         const osdFilter = filter || 'none';
-        if (osdFilter !== this.lastAppliedOsdFilter) {
+        const targetsChanged = !this.sameNodeList(targets, this.lastAppliedOsdFilterTargets);
+        if (osdFilter !== this.lastAppliedOsdFilter || targetsChanged) {
+            this.clearStaleNodeStyle(this.lastAppliedOsdFilterTargets, targets, 'filter');
             targets.forEach(el => { el.style.filter = osdFilter; });
             this.lastAppliedOsdFilter = osdFilter;
+            this.lastAppliedOsdFilterTargets = targets.slice();
         }
         const media = this.els.av?.querySelector('.mimir-av-media');
         const mediaFilter = filter || 'none';
@@ -2740,7 +2746,7 @@ export class MimirExplorer {
         }
     }
 
-    applyTransforms() {
+    applyTransforms(forceRefreshTargets = false) {
         const { rotate, flipH, flipV } = this.filterState;
         const viewport = this.osdExplorer?.viewport;
         const canRotate = !!viewport?.setRotation;
@@ -2751,11 +2757,14 @@ export class MimirExplorer {
         const scaleY = flipV ? -1 : 1;
         const cssRotate = canRotate ? 0 : rotate;
         const needsCssTransform = cssRotate !== 0 || scaleX !== 1 || scaleY !== 1;
-        const targets = this.getOsdTargets();
+        const targets = this.getOsdTargets(forceRefreshTargets);
         const osdTransform = needsCssTransform ? `rotate(${cssRotate}deg) scale(${scaleX}, ${scaleY})` : 'none';
-        if (osdTransform !== this.lastAppliedOsdTransform) {
+        const targetsChanged = !this.sameNodeList(targets, this.lastAppliedOsdTransformTargets);
+        if (osdTransform !== this.lastAppliedOsdTransform || targetsChanged) {
+            this.clearStaleNodeStyle(this.lastAppliedOsdTransformTargets, targets, 'transform');
             targets.forEach(el => { el.style.transform = osdTransform; });
             this.lastAppliedOsdTransform = osdTransform;
+            this.lastAppliedOsdTransformTargets = targets.slice();
         }
         const media = this.els.av?.querySelector('.mimir-av-media');
         if (media) {
@@ -2883,8 +2892,49 @@ export class MimirExplorer {
         return url.startsWith('http://') ? `https://${url.slice(7)}` : url;
     }
 
-    getOsdTargets() {
-        if (this.cachedOsdTargets?.length && this.cachedOsdTargets.every(el => el?.isConnected)) {
+    sameNodeList(a = [], b = []) {
+        if (a === b) return true;
+        if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+        return a.every((node, index) => node === b[index]);
+    }
+
+    clearStaleNodeStyle(previous = [], next = [], property) {
+        if (!property || !Array.isArray(previous)) return;
+        previous.forEach((node) => {
+            if (!node?.isConnected || next.includes(node)) return;
+            node.style[property] = 'none';
+        });
+    }
+
+    isUsingWebGLDrawer() {
+        const drawerName = this.osdExplorer?.drawer?.constructor?.name || '';
+        return /webgl/i.test(drawerName);
+    }
+
+    getOsdFilterTargets(forceRefresh = false) {
+        if (!forceRefresh && this.cachedOsdFilterTargets?.length && this.cachedOsdFilterTargets.every(el => el?.isConnected)) {
+            return this.cachedOsdFilterTargets;
+        }
+        const targets = [];
+        if (!this.els.osd) return targets;
+        const wrapper = this.els.osd.querySelector('.openseadragon-canvas');
+        const canvases = Array.from(this.els.osd.querySelectorAll('canvas'));
+        const prefersCanvasTargets = this.isSafariBrowser && this.isUsingWebGLDrawer();
+        if (prefersCanvasTargets && canvases.length) {
+            targets.push(...canvases);
+        } else if (wrapper) {
+            targets.push(wrapper);
+        } else if (canvases.length) {
+            targets.push(canvases[0]);
+        } else {
+            targets.push(this.els.osd);
+        }
+        this.cachedOsdFilterTargets = targets;
+        return targets;
+    }
+
+    getOsdTargets(forceRefresh = false) {
+        if (!forceRefresh && this.cachedOsdTargets?.length && this.cachedOsdTargets.every(el => el?.isConnected)) {
             return this.cachedOsdTargets;
         }
         const targets = [];
@@ -3772,6 +3822,10 @@ export class MimirExplorer {
                 const count = this.osdExplorer?.world?.getItemCount?.() ?? 0;
                 console.info('[Mimir] OSD open', { items: count });
             }
+            if (this.isSafariBrowser && this.isUsingWebGLDrawer()) {
+                this.applyFilters(true);
+                this.applyTransforms(true);
+            }
             const goToIndex = (idx) => {
                 if (!Number.isFinite(idx)) return false;
                 if (this.isBookMode) {
@@ -3811,6 +3865,10 @@ export class MimirExplorer {
             }
         });
         this.osdExplorer.addHandler('tile-loaded', () => {
+            if (this.isSafariBrowser && this.isUsingWebGLDrawer()) {
+                this.applyFilters(true);
+                this.applyTransforms(true);
+            }
             if (this.isContinuousMode) this.centerContinuous();
         });
         this.osdExplorer.addHandler('tile-loaded', () => {
@@ -7478,9 +7536,12 @@ export class MimirExplorer {
         this.destroyThree();
         if (this.osdExplorer) { this.osdExplorer.destroy(); this.osdExplorer = null; }
         this.cachedOsdTargets = null;
+        this.cachedOsdFilterTargets = null;
         this.lastAppliedOsdFilter = null;
+        this.lastAppliedOsdFilterTargets = null;
         this.lastAppliedMediaFilter = null;
         this.lastAppliedOsdTransform = null;
+        this.lastAppliedOsdTransformTargets = null;
         this.lastAppliedMediaTransform = null;
         this.lastBottomBarHeight = null;
         this.avItems = []; this.modelItems = []; this.currentAvIndex = 0; this.currentModelIndex = 0;
