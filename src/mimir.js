@@ -14,6 +14,7 @@ import iconChevronLeft from '@tabler/icons/outline/chevron-left.svg?raw';
 import iconChevronRight from '@tabler/icons/outline/chevron-right.svg?raw';
 import iconBook from '@tabler/icons/outline/book.svg?raw';
 import iconBookFilled from '@tabler/icons/filled/book.svg?raw';
+import iconTextScan2 from '@tabler/icons/outline/text-scan-2.svg?raw';
 import iconSun from '@tabler/icons/outline/sun.svg?raw';
 import iconMoon from '@tabler/icons/outline/moon.svg?raw';
 import iconMaximize from '@tabler/icons/outline/arrows-maximize.svg?raw';
@@ -62,6 +63,26 @@ import zeroIcon from './assets/cc/zero.svg';
 import pdIcon from './assets/cc/pd.svg';
 import logoLight from './assets/mimir_logo_lightmode.png';
 import logoDark from './assets/mimir_logo_darkmode.png';
+import {
+    collectManifestLanguages as collectManifestLanguagesHelper,
+    getBrowserLanguage as getBrowserLanguageHelper,
+    getLanguageDisplayName as getLanguageDisplayNameHelper,
+    normalizeLang as normalizeLangHelper,
+    pickManifestLanguage as pickManifestLanguageHelper,
+    resolveLangValue as resolveLangValueHelper,
+    resolveViewerLanguage as resolveViewerLanguageHelper,
+    translate
+} from './core/i18n.js';
+import {
+    detectType as detectTypeHelper,
+    extractAltoSourcesFromItems as extractAltoSourcesFromItemsHelper,
+    extractImageApiRegion as extractImageApiRegionHelper,
+    extractPointSelector as extractPointSelectorHelper,
+    parseAnnotationPageItems as parseAnnotationPageItemsHelper,
+    parseImageApiRegion as parseImageApiRegionHelper,
+    parseManifest as parseManifestHelper,
+    resolveContentState as resolveContentStateHelper
+} from './parsing/manifest.js';
 
 const withIconClass = (svg) => {
     if (!svg) return '';
@@ -81,6 +102,7 @@ const ICONS = {
     chevronRight: withIconClass(iconChevronRight),
     book: withIconClass(iconBook),
     bookFilled: withIconClass(iconBookFilled),
+    textScan: withIconClass(iconTextScan2),
     sun: withIconClass(iconSun),
     moon: withIconClass(iconMoon),
     maximize: withIconClass(iconMaximize),
@@ -212,7 +234,9 @@ export class MimirExplorer {
         this.fulltextPageRefs = [];
         this.fulltextByCanvasId = {};
         this.currentFulltextLines = [];
-        this.fulltextMode = 'lines'; // lines | flow
+        this.fulltextMode = this.getSessionFlag('mimir_fulltext_flow', false) ? 'flow' : 'lines';
+        this.fulltextOverlayEnabled = this.getSessionFlag('mimir_fulltext_overlay_enabled', true);
+        this.outlineShowPages = this.getSessionFlag('mimir_outline_show_pages', true);
         this.bookPages = [];
         this.bookPageIndex = 0;
         this.bookCenterPending = false;
@@ -510,10 +534,11 @@ export class MimirExplorer {
                                     ${ICONS.chevronLeft}
                                 </button>
                                 <div class="mimir-page-control">
-                                <div class="mimir-page-row">
-                                    <input id="mimir-page-input" class="mimir-page-input" type="number" min="1" value="1">
-                                    <span id="mimir-page-total" class="mimir-page-total">/ 1</span>
-                                </div>
+                                    <div class="mimir-page-row">
+                                        <input id="mimir-page-input" class="mimir-page-input" type="number" min="1" value="1">
+                                        <span id="mimir-page-total" class="mimir-page-total">/ 1</span>
+                                    </div>
+                                    <div id="mimir-page-label" class="mimir-page-label" title="${this.t('no_label')}">${this.t('no_label')}</div>
                                 </div>
                                 <button id="mimir-next" class="mimir-icon-btn" title="${this.t('next_page')}">
                                     ${ICONS.chevronRight}
@@ -545,6 +570,9 @@ export class MimirExplorer {
                                 <span id="mimir-divider-right-1" class="mimir-divider"></span>
                                 <button id="mimir-book-toggle" class="mimir-icon-btn" title="${this.t('toggle_book')}">
                                     ${ICONS.book}
+                                </button>
+                                <button id="mimir-fulltext-overlay-toggle" class="mimir-icon-btn mimir-hidden" title="${this.t('toggle_fulltext_overlay')}">
+                                    ${ICONS.textScan}
                                 </button>
                                 <button id="mimir-continuous-toggle" class="mimir-icon-btn" title="${this.t('toggle_continuous')}">
                                     ${ICONS.arrowAutofit}
@@ -578,7 +606,13 @@ export class MimirExplorer {
                             <div id="mimir-fulltext" class="mimir-tab-panel mimir-hidden" data-panel="fulltext">
                                 <div class="mimir-annotations-toolbar">
                                     <div id="mimir-fulltext-color-palette" class="mimir-color-palette"></div>
-                                    <button id="mimir-fulltext-toggle" class="mimir-chip">${this.t('flow')}</button>
+                                    <label class="mimir-switch-row">
+                                        <span id="mimir-fulltext-toggle-label" class="mimir-switch-label">${this.t('flow')}</span>
+                                        <span class="mimir-switch">
+                                            <input id="mimir-fulltext-toggle" type="checkbox" ${this.fulltextMode === 'flow' ? 'checked' : ''}>
+                                            <span class="mimir-switch-track"><span class="mimir-switch-thumb"></span></span>
+                                        </span>
+                                    </label>
                                 </div>
                                 <div id="mimir-fulltext-body"></div>
                             </div>
@@ -629,10 +663,12 @@ export class MimirExplorer {
             pageNum: this.container.querySelector('#mimir-page-num'),
             pageInput: this.container.querySelector('#mimir-page-input'),
             pageTotal: this.container.querySelector('#mimir-page-total'),
+            pageLabel: this.container.querySelector('#mimir-page-label'),
             metadataContainer: this.container.querySelector('#mimir-metadata'),
             fulltextContainer: this.container.querySelector('#mimir-fulltext'),
             fulltextBody: this.container.querySelector('#mimir-fulltext-body'),
             fulltextToggle: this.container.querySelector('#mimir-fulltext-toggle'),
+            fulltextToggleLabel: this.container.querySelector('#mimir-fulltext-toggle-label'),
             fulltextColorPalette: this.container.querySelector('#mimir-fulltext-color-palette'),
             annotationsContainer: this.container.querySelector('#mimir-annotations'),
             annotationsToggle: this.container.querySelector('#mimir-annotations-toggle'),
@@ -685,6 +721,7 @@ export class MimirExplorer {
                 topFullscreen: this.container.querySelector('#mimir-fullscreen-top'),
                 topDarkToggle: this.container.querySelector('#mimir-dark-toggle-top'),
                 bookToggle: this.container.querySelector('#mimir-book-toggle'),
+                fulltextOverlayToggle: this.container.querySelector('#mimir-fulltext-overlay-toggle'),
                 download: this.container.querySelector('#mimir-download'),
                 playToggle: this.container.querySelector('#mimir-play-toggle'),
                 back30: this.container.querySelector('#mimir-back-30'),
@@ -906,13 +943,14 @@ export class MimirExplorer {
             .mimir-sidebar-shell {
                 width: var(--mimir-panel-width);
                 height: 100%;
+                display: flex;
+                flex-direction: column;
                 border-right: 1px solid rgba(17,17,17,0.08);
                 background: rgba(255,255,255,0.92);
                 color-scheme: light;
                 backdrop-filter: blur(12px);
                 -webkit-backdrop-filter: blur(12px);
-                overflow-y: auto;
-                overflow-x: hidden;
+                overflow: hidden;
                 box-shadow: 0 18px 40px rgba(17,17,17,0.18);
                 transform: translate3d(-1rem, 0, 0);
                 opacity: 0;
@@ -995,12 +1033,28 @@ export class MimirExplorer {
                 background: rgba(17,17,17,0.06);
                 border-color: rgba(17,17,17,0.12);
             }
-            .mimir-tab-panel { display: grid; gap: 0.75rem; }
+            .mimir-tab-panel {
+                display: grid;
+                gap: 0.75rem;
+                align-content: start;
+                align-self: start;
+            }
             .mimir-eyebrow {
                 font-size: 0.7rem; letter-spacing: 0.2em; text-transform: uppercase;
                 color: #9ca3af; font-weight: 700;
             }
-            .mimir-sidebar-body { padding: 1rem 1.5rem 1.5rem; min-width: 20rem; display: grid; gap: 0.75rem; overflow-x: hidden; }
+            .mimir-sidebar-body {
+                flex: 1 1 auto;
+                min-height: 0;
+                padding: 1rem 1.5rem 1.5rem;
+                min-width: 20rem;
+                display: grid;
+                gap: 0.75rem;
+                align-content: start;
+                align-items: start;
+                overflow-y: auto;
+                overflow-x: hidden;
+            }
             .mimir-card {
                 border-radius: 0.85rem;
                 border: 1px solid rgba(17,17,17,0.08);
@@ -1575,16 +1629,77 @@ export class MimirExplorer {
                 gap: 0.4rem;
                 overflow-x: hidden;
             }
+            .mimir-outline-toolbar {
+                display: flex;
+                justify-content: flex-end;
+                margin-bottom: 0.55rem;
+            }
+            .mimir-switch-row {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.6rem;
+                cursor: pointer;
+                user-select: none;
+            }
+            .mimir-switch-label {
+                font-size: 0.76rem;
+                color: #6b7280;
+            }
+            .mimir-switch {
+                position: relative;
+                width: 2.5rem;
+                height: 1.45rem;
+                display: inline-flex;
+                flex-shrink: 0;
+            }
+            .mimir-switch input {
+                position: absolute;
+                inset: 0;
+                opacity: 0;
+                margin: 0;
+                cursor: pointer;
+            }
+            .mimir-switch-track {
+                width: 100%;
+                height: 100%;
+                display: inline-flex;
+                align-items: center;
+                padding: 0.12rem;
+                border-radius: 999px;
+                background: rgba(17,17,17,0.12);
+                border: 1px solid rgba(17,17,17,0.08);
+                transition: background 0.18s ease, border-color 0.18s ease;
+            }
+            .mimir-switch-thumb {
+                width: 1.05rem;
+                height: 1.05rem;
+                border-radius: 999px;
+                background: #ffffff;
+                box-shadow: 0 2px 8px rgba(17,17,17,0.18);
+                transition: transform 0.18s ease, background 0.18s ease;
+            }
+            .mimir-switch input:checked + .mimir-switch-track {
+                background: rgba(var(--mimir-primary-rgb), 0.22);
+                border-color: rgba(var(--mimir-primary-rgb), 0.26);
+            }
+            .mimir-switch input:checked + .mimir-switch-track .mimir-switch-thumb {
+                transform: translateX(1.02rem);
+                background: var(--mimir-primary);
+            }
+            .mimir-switch input:focus-visible + .mimir-switch-track {
+                outline: 2px solid rgba(var(--mimir-primary-rgb), 0.35);
+                outline-offset: 2px;
+            }
             .mimir-outline-node {
                 display: grid;
-                gap: 0.35rem;
+                gap: 0.25rem;
             }
             .mimir-outline-row {
                 display: grid;
                 grid-template-columns: 1.5rem 1fr;
                 align-items: center;
-                gap: 0.35rem;
-                padding: 0.3rem 0.4rem;
+                gap: 0.25rem;
+                padding: 0.2rem 0.35rem;
                 border-radius: 0.6rem;
                 border: 1px solid rgba(17,17,17,0.08);
                 background: rgba(17,17,17,0.03);
@@ -1603,15 +1718,20 @@ export class MimirExplorer {
             .mimir-outline-leaf {
                 width: 1.25rem;
                 height: 1.25rem;
-                display: grid;
-                place-items: center;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
                 font-weight: 700;
+                line-height: 1;
                 border: none;
+                padding: 0;
                 background: transparent;
                 color: #111111;
             }
             .mimir-outline-toggle {
                 cursor: pointer;
+                font-size: 0.95rem;
+                transform: translateY(-0.02em);
             }
             .mimir-outline-leaf::before {
                 content: '';
@@ -1623,11 +1743,11 @@ export class MimirExplorer {
                 display: block;
             }
             .mimir-outline-children {
-                margin-left: 0.8rem;
-                padding-left: 0.5rem;
+                margin-left: 0.7rem;
+                padding-left: 0.4rem;
                 border-left: 1px solid rgba(17,17,17,0.2);
                 display: none;
-                gap: 0.4rem;
+                gap: 0.25rem;
             }
             .mimir-outline-node.mimir-outline-open > .mimir-outline-children {
                 display: grid;
@@ -1643,7 +1763,7 @@ export class MimirExplorer {
             .mimir-outline-item {
                 font-size: 0.75rem;
                 color: #6b7280;
-                padding: 0.25rem 0.6rem 0.25rem 2.1rem;
+                padding: 0.18rem 0.45rem 0.18rem 1.95rem;
                 cursor: pointer;
             }
             .mimir-outline-item.is-active {
@@ -1776,15 +1896,30 @@ export class MimirExplorer {
                 min-width: 4.5rem; text-align: center;
             }
             .mimir-page-control {
-                display: grid; gap: 0.15rem; min-width: 5.5rem;
+                display: grid; gap: 0.15rem; width: 10rem; flex: 0 0 10rem;
                 margin: 0 0.5rem;
+                align-items: center;
             }
             .mimir-page-row {
                 display: flex; align-items: center; gap: 0.35rem;
                 justify-content: center;
+                width: 100%;
+            }
+            .mimir-page-label {
+                min-height: 1rem;
+                width: 100%;
+                font-size: 0.66rem;
+                font-weight: 500;
+                line-height: 1;
+                color: rgba(17,17,17,0.48);
+                text-align: center;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                letter-spacing: 0.02em;
             }
             .mimir-page-input {
-                width: auto; min-width: 2ch; max-width: 6ch;
+                width: 3.25rem; min-width: 3.25rem; max-width: 3.25rem;
                 background: rgba(17,17,17,0.06);
                 border: 1px solid rgba(17,17,17,0.12);
                 border-radius: 0.6rem;
@@ -1860,21 +1995,21 @@ export class MimirExplorer {
             }
 
             /* Scrollbar styling */
-            .mimir-sidebar-shell {
+            .mimir-sidebar-body {
                 scrollbar-width: thin;
                 scrollbar-color: rgba(120,120,120,0.5) transparent;
             }
-            .mimir-sidebar-shell::-webkit-scrollbar {
+            .mimir-sidebar-body::-webkit-scrollbar {
                 width: 6px;
             }
-            .mimir-sidebar-shell::-webkit-scrollbar-track {
+            .mimir-sidebar-body::-webkit-scrollbar-track {
                 background: transparent;
             }
-            .mimir-sidebar-shell::-webkit-scrollbar-thumb {
+            .mimir-sidebar-body::-webkit-scrollbar-thumb {
                 background-color: rgba(120,120,120,0.4);
                 border-radius: 999px;
             }
-            .mimir-sidebar-shell::-webkit-scrollbar-thumb:hover {
+            .mimir-sidebar-body::-webkit-scrollbar-thumb:hover {
                 background-color: rgba(120,120,120,0.7);
             }
 
@@ -2129,7 +2264,7 @@ export class MimirExplorer {
                 color: #e5e7eb;
             }
             #mimir-root.mimir-dark .mimir-render-mode { color: #e5e7eb; }
-            #mimir-root.mimir-dark .mimir-sidebar-shell {
+            #mimir-root.mimir-dark .mimir-sidebar-body {
                 scrollbar-color: rgba(156,163,175,0.6) rgba(255,255,255,0.04);
             }
             #mimir-root.mimir-dark .mimir-tabs {
@@ -2156,19 +2291,22 @@ export class MimirExplorer {
             #mimir-root.mimir-dark .mimir-page-total {
                 color: rgba(229,231,235,0.8);
             }
+            #mimir-root.mimir-dark .mimir-page-label {
+                color: rgba(226,232,240,0.6);
+            }
             #mimir-root.mimir-dark .mimir-filter-slider::-webkit-slider-runnable-track {
                 background: rgba(255,255,255,0.2);
             }
             #mimir-root.mimir-dark .mimir-filter-slider::-moz-range-track {
                 background: rgba(255,255,255,0.2);
             }
-            #mimir-root.mimir-dark .mimir-sidebar-shell::-webkit-scrollbar-track {
+            #mimir-root.mimir-dark .mimir-sidebar-body::-webkit-scrollbar-track {
                 background: rgba(255,255,255,0.04);
             }
-            #mimir-root.mimir-dark .mimir-sidebar-shell::-webkit-scrollbar-thumb {
+            #mimir-root.mimir-dark .mimir-sidebar-body::-webkit-scrollbar-thumb {
                 background-color: rgba(156,163,175,0.6);
             }
-            #mimir-root.mimir-dark .mimir-sidebar-shell::-webkit-scrollbar-thumb:hover {
+            #mimir-root.mimir-dark .mimir-sidebar-body::-webkit-scrollbar-thumb:hover {
                 background-color: rgba(229,231,235,0.55);
             }
             #mimir-root.mimir-dark .mimir-card {
@@ -2218,6 +2356,21 @@ export class MimirExplorer {
             #mimir-root.mimir-dark .mimir-outline-row {
                 border-color: rgba(255,255,255,0.1);
                 background: rgba(255,255,255,0.04);
+            }
+            #mimir-root.mimir-dark .mimir-switch-label {
+                color: #cbd5e1;
+            }
+            #mimir-root.mimir-dark .mimir-switch-track {
+                background: rgba(255,255,255,0.12);
+                border-color: rgba(255,255,255,0.12);
+            }
+            #mimir-root.mimir-dark .mimir-switch-thumb {
+                background: #f8fafc;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+            }
+            #mimir-root.mimir-dark .mimir-switch input:checked + .mimir-switch-track {
+                background: rgba(var(--mimir-primary-rgb), 0.3);
+                border-color: rgba(var(--mimir-primary-rgb), 0.3);
             }
             #mimir-root.mimir-dark .mimir-outline-label {
                 color: #e5e7eb;
@@ -2491,6 +2644,15 @@ export class MimirExplorer {
         if (this.els.btns.threeToggle) {
             this.els.btns.threeToggle.onclick = () => this.setThreeFilterOpen(!this.threeFilterOpen);
         }
+        if (this.els.btns.fulltextOverlayToggle) {
+            this.els.btns.fulltextOverlayToggle.onclick = () => {
+                this.fulltextOverlayEnabled = !this.fulltextOverlayEnabled;
+                this.setSessionFlag('mimir_fulltext_overlay_enabled', this.fulltextOverlayEnabled);
+                this.updateFulltextOverlayUI();
+                if (this.fulltextOverlayEnabled) this.updateFulltextOverlays();
+                else if (this.els.fulltextLayer) this.els.fulltextLayer.innerHTML = '';
+            };
+        }
         if (this.els.threeAutoRotate) {
             this.els.threeAutoRotate.onclick = () => {
                 const enabled = !this.els.threeAutoRotate.classList.contains('is-active');
@@ -2647,10 +2809,8 @@ export class MimirExplorer {
             };
         }
         if (this.els.fulltextToggle) {
-            this.els.fulltextToggle.onclick = () => {
-                this.fulltextMode = this.fulltextMode === 'lines' ? 'flow' : 'lines';
-                this.els.fulltextToggle.textContent = this.fulltextMode === 'lines' ? this.t('flow') : this.t('lines');
-                this.updateFulltextPanel(this.osdExplorer?.currentPage?.() || 0);
+            this.els.fulltextToggle.onchange = () => {
+                this.setFulltextMode(this.els.fulltextToggle.checked ? 'flow' : 'lines');
             };
         }
         this.renderFulltextColorPalette();
@@ -3014,6 +3174,27 @@ export class MimirExplorer {
         return /^#[0-9a-f]{6}$/.test(normalized) ? normalized : '';
     }
 
+    hasFulltextSourceData() {
+        const sourceMap = this.fulltextSourcesByCanvasId || {};
+        if (Object.values(sourceMap).some((list) => Array.isArray(list) && list.length > 0)) return true;
+        const lineMap = this.fulltextByCanvasId || {};
+        return Object.values(lineMap).some((list) => Array.isArray(list) && list.length > 0);
+    }
+
+    updateFulltextOverlayUI() {
+        const button = this.els.btns.fulltextOverlayToggle;
+        if (!button) return;
+        const hasFulltext = this.hasFulltextSourceData();
+        const show = hasFulltext && this.currentParsed?.type === 'image';
+        button.classList.toggle('mimir-hidden', !show);
+        button.classList.remove('mimir-filter-active');
+        button.style.color = show && this.fulltextOverlayEnabled ? 'var(--mimir-primary)' : '';
+        button.setAttribute('aria-pressed', show && this.fulltextOverlayEnabled ? 'true' : 'false');
+        if (this.els.fulltextLayer) {
+            this.els.fulltextLayer.classList.toggle('mimir-hidden', !show || !this.fulltextOverlayEnabled);
+        }
+    }
+
     applyFulltextOverlayColor(value = 'default') {
         const paletteEntry = this.fulltextOverlayPalette.find(entry => entry.id === value);
         const hex = this.normalizeHexColor(paletteEntry?.hex || value) || this.options.primaryColor;
@@ -3222,24 +3403,9 @@ export class MimirExplorer {
     }
 
     resolveContentState(data) {
-        if (!data || typeof data !== 'object') return null;
-        const getId = (obj) => this.ensureHttps((obj && (obj.id || obj['@id'])) || null);
-        const asArray = (val) => (Array.isArray(val) ? val : (val ? [val] : []));
-        const type = String(data.type || data['@type'] || '').toLowerCase();
-        const motivations = asArray(data.motivation).map(m => String(m || '').toLowerCase());
-        const isContentState = type.includes('annotation') && motivations.some(m => m.includes('contentstate'));
-        if (!isContentState) return null;
-        const target = data.target || data.on;
-        if (typeof target === 'string') return { manifestUrl: target, target };
-        if (target && typeof target === 'object') {
-            const tType = String(target.type || target['@type'] || '').toLowerCase();
-            const targetId = getId(target);
-            const partOf = asArray(target.partOf || target.within).map(getId).find(Boolean);
-            if (tType.includes('manifest') && targetId) return { manifestUrl: targetId, target };
-            if (partOf) return { manifestUrl: partOf, target };
-            if (targetId && targetId.includes('/manifest')) return { manifestUrl: targetId, target };
-        }
-        return null;
+        return resolveContentStateHelper(data, {
+            ensureHttps: (url) => this.ensureHttps(url)
+        });
     }
 
     applyContentStateTarget(parsed) {
@@ -3330,217 +3496,34 @@ export class MimirExplorer {
                 console.warn('Mimir: Failed to load fulltext page', ref.id, err);
             }
         }));
+        this.updateFulltextOverlayUI();
         this.updateFulltextPanel(this.osdExplorer?.currentPage?.() || 0);
     }
 
     extractAltoSourcesFromItems(items) {
-        const asArray = (val) => (Array.isArray(val) ? val : (val ? [val] : []));
-        const getType = (obj) => (obj && (obj.type || obj['@type'])) || '';
-        const sources = [];
-        asArray(items).forEach((anno) => {
-            const motivation = anno?.motivation || '';
-            if (String(motivation).includes('painting')) return;
-            const bodies = asArray(anno?.body || anno?.resource);
-            bodies.forEach((b) => {
-                if (!b) return;
-                if (getType(b) === 'SpecificResource' && b.source) {
-                    sources.push(...this.extractAltoSourcesFromItems([b.source]));
-                    return;
-                }
-                const id = b.id || b['@id'] || (typeof b === 'string' ? b : '');
-                const format = b.format || '';
-                if (!id) return;
-                if (format.includes('alto') || format.includes('xml') || id.endsWith('.xml')) {
-                    sources.push(id);
-                }
-            });
-        });
-        return sources.filter(Boolean);
+        return extractAltoSourcesFromItemsHelper(items);
     }
 
     parseAnnotationPageItems(items, canvasId, pageStylesheets = []) {
-        const asArray = (val) => (Array.isArray(val) ? val : (val ? [val] : []));
-        const getId = (obj) => this.ensureHttps((obj && (obj.id || obj['@id'])) || null);
-        const getType = (obj) => (obj && (obj.type || obj['@type'])) || '';
-        const getLabel = (label) => this.resolveLangValue(label, '');
-        const escapeHtml = (text) => String(text)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/\"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-        const extractXYWH = (val) => {
-            if (!val || typeof val !== 'string') return null;
-            const match = val.match(/xywh=([^&]+)/);
-            if (!match) return null;
-            const raw = match[1].replace(/^pixel:/, '').replace(/^pct:/, '').trim();
-            const nums = raw.split(',').map(Number);
-            if (nums.length !== 4 || nums.some(n => !Number.isFinite(n))) return null;
-            return nums;
-        };
-        const extractSvgXYWH = (svgText) => {
-            if (!svgText || typeof DOMParser === 'undefined') return null;
-            try {
-                const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
-                const svg = doc.documentElement;
-                if (!svg) return null;
-                const shape = svg.querySelector('rect, circle, ellipse, polygon, polyline, path');
-                if (!shape) return null;
-                const temp = document.createElement('div');
-                temp.style.position = 'absolute';
-                temp.style.left = '-9999px';
-                temp.style.top = '-9999px';
-                const liveSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-                const imported = document.importNode ? document.importNode(shape, true) : shape.cloneNode(true);
-                liveSvg.appendChild(imported);
-                temp.appendChild(liveSvg);
-                document.body.appendChild(temp);
-                const bbox = imported.getBBox();
-                document.body.removeChild(temp);
-                return [bbox.x, bbox.y, bbox.width, bbox.height];
-            } catch {
-                return null;
-            }
-        };
-        const parseTarget = (target, fallbackCanvasId) => {
-            if (!target) return { canvasId: fallbackCanvasId, xywh: null };
-            if (typeof target === 'string') {
-                const [base, fragment] = target.split('#');
-                const xywh = extractXYWH(fragment || target);
-                return { canvasId: base || fallbackCanvasId, xywh };
-            }
-            if (Array.isArray(target)) return parseTarget(target[0], fallbackCanvasId);
-            const source = target.source || target.id || target['@id'];
-            const selectors = asArray(target.selector || target.selectors);
-            let xywh = null;
-            selectors.forEach(sel => {
-                if (xywh) return;
-                const value = sel?.value || sel?.['@value'] || '';
-                xywh = extractXYWH(value);
-                if (!xywh && String(sel?.type || sel?.['@type']).includes('Svg')) {
-                    xywh = extractSvgXYWH(value);
-                }
-            });
-            return { canvasId: source || fallbackCanvasId, xywh };
-        };
-        const extractTextBodies = (body) => {
-            const bodies = asArray(body);
-            const results = [];
-            bodies.forEach(b => {
-                if (!b) return;
-                const type = getType(b);
-                const format = b.format || '';
-                if (type === 'SpecificResource' && b.source) {
-                    results.push(...extractTextBodies(b.source));
-                    return;
-                }
-                const value = b.value || b.chars || b.text || b['@value'] || (typeof b === 'string' ? b : '');
-                if (!value) return;
-                const isText = type === 'TextualBody' || format.startsWith('text/');
-                if (!isText && typeof b !== 'string') return;
-                const isHtml = format.includes('html');
-                const html = isHtml ? value : `<p>${escapeHtml(value).replace(/\\n/g, '<br>')}</p>`;
-                const label = getLabel(b.label);
-                results.push({ html, label });
-            });
-            return results;
-        };
-        const annotations = [];
-        asArray(items).forEach((anno) => {
-            if (!anno) return;
-            const motivation = anno.motivation || '';
-            const textBodies = extractTextBodies(anno.body || anno.resource);
-            if (!textBodies.length) return;
-            if (String(motivation).includes('painting')) return;
-            const targetInfo = parseTarget(anno.target || anno.on, canvasId);
-            const html = textBodies.map(b => b.html).join('');
-            const label = getLabel(anno.label) || textBodies[0]?.label || '';
-            const id = getId(anno) || `${canvasId || 'canvas'}-anno-${annotations.length + 1}`;
-            const stylesheets = [...pageStylesheets];
-            const stylesheet = anno.stylesheet || anno.styleSheet;
-            if (stylesheet) {
-                if (typeof stylesheet === 'string') stylesheets.push(stylesheet);
-                else if (Array.isArray(stylesheet)) {
-                    stylesheet.forEach(s => stylesheets.push(s.id || s['@id'] || s));
-                } else stylesheets.push(stylesheet.id || stylesheet['@id']);
-            }
-            const styleClass = anno.styleClass || anno.class || anno.body?.styleClass || anno.target?.styleClass || '';
-            annotations.push({
-                id,
-                label,
-                html,
-                canvasId: targetInfo.canvasId || canvasId,
-                xywh: targetInfo.xywh,
-                styleClass,
-                stylesheets: stylesheets.filter(Boolean).map(href => this.ensureHttps(href))
-            });
+        return parseAnnotationPageItemsHelper({
+            items,
+            canvasId,
+            pageStylesheets,
+            ensureHttps: (url) => this.ensureHttps(url),
+            resolveLangValue: (value, fallback = '') => this.resolveLangValue(value, fallback)
         });
-        return annotations;
     }
 
     extractPointSelector(target) {
-        if (!target) return null;
-        const collect = (sel, bucket) => {
-            if (!sel) return;
-            if (Array.isArray(sel)) sel.forEach(s => collect(s, bucket));
-            else if (sel.selector) collect(sel.selector, bucket);
-            else bucket.push(sel);
-        };
-        const selectors = [];
-        collect(target.selector || target, selectors);
-        const point = selectors.find(s => String(s.type || s['@type']).toLowerCase().includes('pointselector'));
-        if (!point) return null;
-        const x = Number(point.x), y = Number(point.y), z = Number(point.z);
-        if (![x, y, z].every(n => Number.isFinite(n))) return null;
-        return { x, y, z };
+        return extractPointSelectorHelper(target);
     }
 
     parseImageApiRegion(region, imageW, imageH) {
-        if (!region || typeof region !== 'string') return null;
-        let raw = region.trim();
-        let isPct = false;
-        if (raw.startsWith('pct:')) {
-            isPct = true;
-            raw = raw.slice(4);
-        }
-        const nums = raw.split(',').map(Number);
-        if (nums.length !== 4 || nums.some(n => !Number.isFinite(n))) return null;
-        let [x, y, w, h] = nums;
-        if (isPct) {
-            if (!Number.isFinite(imageW) || !Number.isFinite(imageH) || imageW <= 0 || imageH <= 0) return null;
-            x = imageW * (x / 100);
-            y = imageH * (y / 100);
-            w = imageW * (w / 100);
-            h = imageH * (h / 100);
-        }
-        return { x, y, w, h };
+        return parseImageApiRegionHelper(region, imageW, imageH);
     }
 
     extractImageApiRegion(body) {
-        const asArray = (val) => (Array.isArray(val) ? val : (val ? [val] : []));
-        const getType = (obj) => (obj && (obj.type || obj['@type'])) || '';
-        const bodies = asArray(body);
-        for (const b of bodies) {
-            if (!b) continue;
-            const type = getType(b);
-            if (type === 'SpecificResource') {
-                const selectors = asArray(b.selector || b.selectors);
-                const source = b.source || b.resource || null;
-                const imageW = source?.width;
-                const imageH = source?.height;
-                for (const sel of selectors) {
-                    const selType = String(sel?.type || sel?.['@type'] || '').toLowerCase();
-                    if (!selType.includes('imageapiselector')) continue;
-                    const region = this.parseImageApiRegion(sel?.region, imageW, imageH);
-                    if (region) return region;
-                }
-                if (source) {
-                    const nested = this.extractImageApiRegion(source);
-                    if (nested) return nested;
-                }
-            }
-        }
-        return null;
+        return extractImageApiRegionHelper(body);
     }
 
     buildMissingSvg({ width = 800, height = 1000, label = 'Missing image', message = '', iconSvg = '' } = {}) {
@@ -3603,12 +3586,7 @@ export class MimirExplorer {
     }
 
     detectType(manifest, parsed) {
-        const mType = (manifest.type || manifest['@type'] || '').toLowerCase();
-        if (mType.includes('collection')) return 'collection';
-        if (parsed?.modelItems?.length) return '3d';
-        if (parsed?.avItems?.length) return 'av';
-        if (parsed?.imageSources?.length) return 'image';
-        return (manifest.items || manifest.sequences) ? 'image' : 'unknown';
+        return detectTypeHelper(manifest, parsed);
     }
 
     render(type, manifest, parsed) {
@@ -3638,6 +3616,7 @@ export class MimirExplorer {
             if (this.els.btns.prev) this.els.btns.prev.disabled = false;
             if (this.els.btns.next) this.els.btns.next.disabled = false;
         }
+        if (this.els.btns.fulltextOverlayToggle) this.els.btns.fulltextOverlayToggle.classList.add('mimir-hidden');
         this.els.btns.sidebarToggle.classList.remove('mimir-hidden');
         this.els.btns.infoToggle.classList.remove('mimir-hidden');
         this.els.sidebar.classList.remove('mimir-hidden');
@@ -3705,6 +3684,7 @@ export class MimirExplorer {
         if (this.els.btns.fullscreen) this.els.btns.fullscreen.classList.remove('mimir-hidden');
         if (this.els.threeFilterBar) this.els.threeFilterBar.classList.add('mimir-hidden');
         this.threeFilterOpen = false;
+        this.updateFulltextOverlayUI();
 
         switch (type) {
             case 'collection': this.renderCollection(manifest, parsed); break;
@@ -3720,6 +3700,7 @@ export class MimirExplorer {
         if (this.els.av) this.els.av.classList.add('mimir-hidden');
         if (this.els.fulltextLayer) this.els.fulltextLayer.classList.remove('mimir-hidden');
         if (this.els.annotationsLayer) this.els.annotationsLayer.classList.remove('mimir-hidden');
+        this.updateFulltextOverlayUI();
         this.hasRegion = false;
         this.currentRegion = null;
         this.updateRegionToggleUI();
@@ -3911,24 +3892,50 @@ export class MimirExplorer {
         link.click();
     }
 
+    getCanvasDisplayLabel(index) {
+        if (!Number.isInteger(index)) return '';
+        const rawLabel = this.currentParsed?.canvases?.[index]?.label;
+        return String(rawLabel || '').replace(/\s+/g, ' ').trim();
+    }
+
+    getBookSpreadCanvasIndexes(bookPageIndex = this.bookPageIndex) {
+        const canvases = this.currentParsed?.canvases || [];
+        if (!canvases.length || !Number.isInteger(bookPageIndex) || bookPageIndex < 0) return [];
+        if (bookPageIndex === 0) return canvases[0] ? [0] : [];
+        const leftIdx = bookPageIndex * 2 - 1;
+        const rightIdx = leftIdx + 1;
+        return [leftIdx, rightIdx].filter((idx) => idx >= 0 && idx < canvases.length);
+    }
+
+    getPageDisplayLabel(osdPageIndex) {
+        if (!this.currentParsed?.canvases?.length) return this.t('no_label');
+        if (!this.isBookMode) {
+            return this.getCanvasDisplayLabel(osdPageIndex) || this.t('no_label');
+        }
+        const labels = this.getBookSpreadCanvasIndexes(osdPageIndex)
+            .map((idx) => this.getCanvasDisplayLabel(idx))
+            .filter(Boolean);
+        if (!labels.length) return this.t('no_label');
+        if (labels.length === 1 || labels[0] === labels[1]) return labels[0];
+        return `${labels[0]}–${labels[1]}`;
+    }
+
+    updatePageLabel(osdPageIndex) {
+        if (!this.els.pageLabel) return;
+        const label = this.getPageDisplayLabel(osdPageIndex);
+        this.els.pageLabel.textContent = label;
+        this.els.pageLabel.title = label;
+    }
+
     updatePageNum(osdPageIndex) {
         const totalImages = this.tileSources.length;
-        let displayString = "";
-        if (!this.isBookMode) displayString = `${osdPageIndex + 1} / ${totalImages}`;
-        else {
-            if (osdPageIndex === 0) displayString = `1 / ${totalImages}`;
-            else {
-                const start = (osdPageIndex * 2);
-                const end = Math.min(start + 1, totalImages);
-                displayString = (start === end) ? `${start} / ${totalImages}` : `${start}-${end} / ${totalImages}`;
-            }
-        }
         let currentPage = osdPageIndex + 1;
         if (this.isBookMode) {
             currentPage = osdPageIndex === 0 ? 1 : osdPageIndex * 2;
         }
         if (this.els.pageInput) this.els.pageInput.value = String(currentPage);
         if (this.els.pageTotal) this.els.pageTotal.innerText = `/ ${totalImages}`;
+        this.updatePageLabel(osdPageIndex);
         if (this.isBookMode) {
             this.currentCanvasIndex = this.bookPageIndex === 0 ? 0 : (this.bookPageIndex * 2 - 1);
         } else {
@@ -4214,12 +4221,10 @@ export class MimirExplorer {
         } else {
             const canvasIds = [];
             if (this.isBookMode) {
-                const leftIdx = this.bookPageIndex === 0 ? 0 : (this.bookPageIndex * 2 - 1);
-                const rightIdx = leftIdx + 1;
-                const leftId = this.currentParsed?.canvases?.[leftIdx]?.id;
-                const rightId = this.currentParsed?.canvases?.[rightIdx]?.id;
-                if (leftId) canvasIds.push(leftId);
-                if (rightId) canvasIds.push(rightId);
+                this.getBookSpreadCanvasIndexes(this.bookPageIndex).forEach((idx) => {
+                    const canvasId = this.currentParsed?.canvases?.[idx]?.id;
+                    if (canvasId) canvasIds.push(canvasId);
+                });
             } else {
                 const canvasId = this.currentParsed?.canvases?.[osdPageIndex]?.id;
                 if (canvasId) canvasIds.push(canvasId);
@@ -4260,11 +4265,10 @@ export class MimirExplorer {
             } else {
                 const canvasId = item.getAttribute('data-canvas-id');
                 if (this.isBookMode) {
-                    const leftIdx = this.bookPageIndex === 0 ? 0 : (this.bookPageIndex * 2 - 1);
-                    const rightIdx = leftIdx + 1;
-                    const leftId = this.currentParsed?.canvases?.[leftIdx]?.id;
-                    const rightId = this.currentParsed?.canvases?.[rightIdx]?.id;
-                    if (canvasId && (canvasId === leftId || canvasId === rightId)) active = true;
+                    const activeCanvasIds = this.getBookSpreadCanvasIndexes(this.bookPageIndex)
+                        .map((idx) => this.currentParsed?.canvases?.[idx]?.id)
+                        .filter(Boolean);
+                    if (canvasId && activeCanvasIds.includes(canvasId)) active = true;
                 } else {
                     const canvasIdCurrent = this.currentParsed?.canvases?.[osdPageIndex]?.id;
                     if (canvasId && canvasIdCurrent) active = canvasId === canvasIdCurrent;
@@ -4547,6 +4551,7 @@ export class MimirExplorer {
 
     async updateFulltextPanel(pageIndex = null) {
         if (!this.els.fulltextContainer) return;
+        this.updateFulltextOverlayUI();
         let canvasId = pageIndex === null
             ? this.currentFulltextLines?.[0]?.canvasId
             : this.currentParsed?.canvases?.[pageIndex]?.id;
@@ -4708,6 +4713,7 @@ export class MimirExplorer {
             }
         }));
         this.fulltextByCanvasId[canvasId] = allLines;
+        this.updateFulltextOverlayUI();
     }
 
     parseAltoXml(xmlText, canvasWidth, canvasHeight) {
@@ -4774,6 +4780,8 @@ export class MimirExplorer {
     updateFulltextOverlays() {
         if (!this.els.fulltextLayer) return;
         this.els.fulltextLayer.innerHTML = '';
+        this.updateFulltextOverlayUI();
+        if (!this.fulltextOverlayEnabled) return;
         if (!this.osdExplorer || !this.currentFulltextLines?.length) return;
         this.currentFulltextLines.forEach((line) => {
             if (!line.box || !Number.isFinite(line.box.w) || !Number.isFinite(line.box.h)) return;
@@ -5170,6 +5178,146 @@ export class MimirExplorer {
         note.style.top = `${top}px`;
     }
 
+    setOutlineShowPages(enabled) {
+        const next = !!enabled;
+        if (this.outlineShowPages === next) return;
+        this.outlineShowPages = next;
+        this.setSessionFlag('mimir_outline_show_pages', next);
+        if (this.currentParsed) {
+            this.updateStructure(this.currentParsed);
+            this.restoreActiveStructureState();
+        }
+    }
+
+    setFulltextMode(mode) {
+        const next = mode === 'flow' ? 'flow' : 'lines';
+        if (this.fulltextMode === next) return;
+        this.fulltextMode = next;
+        this.setSessionFlag('mimir_fulltext_flow', next === 'flow');
+        this.updateFulltextModeUI();
+        this.updateFulltextPanel(this.osdExplorer?.currentPage?.() || 0);
+    }
+
+    updateFulltextModeUI() {
+        if (this.els.fulltextToggle) {
+            this.els.fulltextToggle.checked = this.fulltextMode === 'flow';
+        }
+        if (this.els.fulltextToggleLabel) {
+            this.els.fulltextToggleLabel.textContent = this.t('flow');
+        }
+    }
+
+    restoreActiveStructureState() {
+        if (!this.currentParsed) return;
+        if (this.currentParsed.type === 'av' && this.avPlayer) {
+            this.highlightActiveOutline(null, this.avPlayer.currentTime);
+            return;
+        }
+        if (this.currentParsed.type !== 'image') return;
+        const pageIndex = this.isBookMode
+            ? this.bookPageIndex
+            : (this.osdExplorer?.currentPage?.() ?? this.pendingStartPage ?? 0);
+        this.highlightActiveCanvas(pageIndex, false);
+        this.highlightActiveOutline(pageIndex);
+    }
+
+    getFirstCanvasIdForRange(range, parsed = this.currentParsed) {
+        if (!range || !parsed?.canvasIndexById) return null;
+        const canvasIds = Array.isArray(range.canvasIds) ? range.canvasIds : [];
+        const firstCanvasId = canvasIds.find((id) => parsed.canvasIndexById[id] !== undefined);
+        if (firstCanvasId) return firstCanvasId;
+        const rangeItems = Array.isArray(range.items) ? range.items : [];
+        for (const itemId of rangeItems) {
+            const baseId = typeof itemId === 'string' ? itemId.split('#')[0] : itemId;
+            if (baseId && parsed.canvasIndexById[baseId] !== undefined) return baseId;
+        }
+        return null;
+    }
+
+    buildOutlineItemEntries(range, parsed = this.currentParsed) {
+        const itemIds = Array.isArray(range?.items) ? range.items : [];
+        return itemIds.map((id) => {
+            if (!id) return null;
+            const baseId = typeof id === 'string' ? id.split('#')[0] : id;
+            const idx = parsed?.canvasIndexById?.[baseId];
+            if (!Number.isInteger(idx)) return null;
+            const canvasLabel = parsed?.canvases?.[idx]?.label || '';
+            const labelText = canvasLabel || `Canvas ${idx + 1}`;
+            const time = typeof id === 'string' ? this.parseCanvasTime(id) : null;
+            const endMatch = typeof id === 'string' ? id.match(/t=([0-9.]+),([0-9.]+)/) : null;
+            const end = endMatch ? Number(endMatch[2]) : null;
+            return {
+                id: baseId,
+                label: labelText,
+                start: Number.isFinite(time) ? time : null,
+                end: Number.isFinite(end) ? end : null
+            };
+        }).filter(entry => entry && entry.label);
+    }
+
+    renderOutlineRange(range, parsed = this.currentParsed, depth = 1) {
+        const label = this.escapeHtml(range?.label || 'Range');
+        const children = Array.isArray(range?.children) ? range.children : [];
+        const itemEntries = this.outlineShowPages ? this.buildOutlineItemEntries(range, parsed) : [];
+        const hasChildren = children.length > 0;
+        const hasItems = itemEntries.length > 0;
+        const isExpandable = hasChildren || (this.outlineShowPages && hasItems);
+        const isOpen = isExpandable && depth <= 1;
+        const toggle = isExpandable
+            ? `<button class="mimir-outline-toggle" data-mimir-outline-toggle>${isOpen ? '−' : '+'}</button>`
+            : `<span class="mimir-outline-leaf"></span>`;
+        const openClass = isOpen ? 'mimir-outline-open' : '';
+        let html = `<div class="mimir-outline-node ${openClass}" data-mimir-outline-node data-mimir-outline-idx="${range._idx}">
+            <div class="mimir-outline-row">
+                ${toggle}
+                <button data-mimir-range="${range._idx}" class="mimir-outline-label">${label}</button>
+            </div>`;
+        if (isExpandable) {
+            html += `<div class="mimir-outline-children">`;
+            if (this.outlineShowPages && hasItems) {
+                itemEntries.forEach((entry) => {
+                    const attrs = [
+                        entry.id ? `data-canvas-id="${entry.id}"` : '',
+                        Number.isFinite(entry.start) ? `data-time-start="${entry.start}"` : '',
+                        Number.isFinite(entry.end) ? `data-time-end="${entry.end}"` : ''
+                    ].filter(Boolean).join(' ');
+                    html += `<div class="mimir-outline-item" data-mimir-outline-item ${attrs}>${this.escapeHtml(entry.label)}</div>`;
+                });
+            }
+            if (hasChildren) {
+                children.forEach((child) => {
+                    html += this.renderOutlineRange(child, parsed, depth + 1);
+                });
+            }
+            html += `</div>`;
+        }
+        html += `</div>`;
+        return html;
+    }
+
+    renderOutlinePanel(parsed) {
+        if (!parsed?.ranges?.length) {
+            return `<div class="mimir-card"><p class="mimir-meta-title">${this.t('toc')}</p><p class="mimir-meta-value">${this.t('no_toc')}</p></div>`;
+        }
+        let outlineHtml = `<div class="mimir-card">
+            <p class="mimir-meta-title">${this.t('toc')}</p>
+            <div class="mimir-outline-toolbar">
+                <label class="mimir-switch-row">
+                    <span class="mimir-switch-label">${this.t('show_pages')}</span>
+                    <span class="mimir-switch">
+                        <input type="checkbox" data-mimir-outline-pages-toggle ${this.outlineShowPages ? 'checked' : ''}>
+                        <span class="mimir-switch-track"><span class="mimir-switch-thumb"></span></span>
+                    </span>
+                </label>
+            </div>
+            <div class="mimir-outline">`;
+        parsed.ranges.forEach((range) => {
+            outlineHtml += this.renderOutlineRange(range, parsed);
+        });
+        outlineHtml += `</div></div>`;
+        return outlineHtml;
+    }
+
     updateStructure(parsed) {
         if (!this.els.structureItems || !this.els.structureOutline || !this.els.structureCollection || !this.els.structureBookmarks) return;
 
@@ -5216,70 +5364,7 @@ export class MimirExplorer {
             itemsHtml += `</div></div>`;
         }
         this.els.structureItems.innerHTML = itemsHtml || `<div class="mimir-card"><p class="mimir-meta-title">${this.t('items')}</p><p class="mimir-meta-value">${this.t('no_items')}</p></div>`;
-
-        let outlineHtml = '';
-        if (parsed?.ranges?.length) {
-            const renderRange = (range, depth = 1) => {
-                const label = range.label || `Range`;
-                const children = Array.isArray(range.children) ? range.children : [];
-                const itemIds = Array.isArray(range.items) ? range.items : [];
-                const itemEntries = itemIds.map((id) => {
-                    if (!id) return null;
-                    const baseId = typeof id === 'string' ? id.split('#')[0] : id;
-                    const idx = this.currentParsed?.canvasIndexById?.[baseId];
-                    if (!Number.isInteger(idx)) return null;
-                    const canvasLabel = this.currentParsed?.canvases?.[idx]?.label || '';
-                    const labelText = canvasLabel || `Canvas ${idx + 1}`;
-                    const time = typeof id === 'string' ? this.parseCanvasTime(id) : null;
-                    const endMatch = typeof id === 'string' ? id.match(/t=([0-9.]+),([0-9.]+)/) : null;
-                    const end = endMatch ? Number(endMatch[2]) : null;
-                    return {
-                        id: baseId,
-                        label: labelText,
-                        start: Number.isFinite(time) ? time : null,
-                        end: Number.isFinite(end) ? end : null
-                    };
-                }).filter(entry => entry && entry.label);
-                const hasChildren = children.length > 0;
-                const hasItems = itemEntries.length > 0;
-                const hasAny = hasChildren || hasItems;
-                const isOpen = hasAny && depth <= 1;
-                const toggle = hasAny
-                    ? `<button class="mimir-outline-toggle" data-mimir-outline-toggle>${isOpen ? '−' : '+'}</button>`
-                    : `<span class="mimir-outline-leaf"></span>`;
-                const openClass = isOpen ? 'mimir-outline-open' : '';
-                let html = `<div class="mimir-outline-node ${openClass}" data-mimir-outline-node data-mimir-outline-idx="${range._idx}">
-                    <div class="mimir-outline-row">
-                        ${toggle}
-                        <button data-mimir-range="${range._idx}" class="mimir-outline-label">${label}</button>
-                    </div>`;
-                if (hasAny) {
-                    html += `<div class="mimir-outline-children">`;
-                    if (hasItems) {
-                        itemEntries.forEach(entry => {
-                            const attrs = [
-                                entry.id ? `data-canvas-id="${entry.id}"` : '',
-                                Number.isFinite(entry.start) ? `data-time-start="${entry.start}"` : '',
-                                Number.isFinite(entry.end) ? `data-time-end="${entry.end}"` : ''
-                            ].filter(Boolean).join(' ');
-                            html += `<div class="mimir-outline-item" data-mimir-outline-item ${attrs}>${this.escapeHtml(entry.label)}</div>`;
-                        });
-                    }
-                    if (hasChildren) {
-                        children.forEach(child => { html += renderRange(child, depth + 1); });
-                    }
-                    html += `</div>`;
-                }
-                html += `</div>`;
-                return html;
-            };
-            outlineHtml += `<div class="mimir-card">
-                <p class="mimir-meta-title">${this.t('toc')}</p>
-                <div class="mimir-outline">`;
-            parsed.ranges.forEach(range => { outlineHtml += renderRange(range); });
-            outlineHtml += `</div></div>`;
-        }
-        this.els.structureOutline.innerHTML = outlineHtml || `<div class="mimir-card"><p class="mimir-meta-title">${this.t('toc')}</p><p class="mimir-meta-value">${this.t('no_toc')}</p></div>`;
+        this.els.structureOutline.innerHTML = this.renderOutlinePanel(parsed);
 
         let collectionHtml = '';
         if (parsed?.type === 'collection' && parsed?.items?.length) {
@@ -5865,7 +5950,7 @@ export class MimirExplorer {
                 const idx = Number(btn.getAttribute('data-mimir-range'));
                 const range = parsed?.rangesFlat?.[idx] || parsed?.ranges?.[idx];
                 if (!this.goToTimeForRange(range)) {
-                    const firstCanvasId = range?.items?.[0];
+                    const firstCanvasId = this.getFirstCanvasIdForRange(range, parsed);
                     const canvasIdx = firstCanvasId && parsed?.canvasIndexById?.[firstCanvasId];
                     if (Number.isInteger(canvasIdx)) {
                         if (this.isBookMode) {
@@ -5876,6 +5961,11 @@ export class MimirExplorer {
                         }
                     }
                 }
+            };
+        });
+        container.querySelectorAll('[data-mimir-outline-pages-toggle]').forEach(input => {
+            input.onchange = () => {
+                this.setOutlineShowPages(input.checked);
             };
         });
         container.querySelectorAll('[data-mimir-outline-toggle]').forEach(btn => {
@@ -5913,747 +6003,53 @@ export class MimirExplorer {
     }
 
     t(key) {
-        const dict = {
-            en: {
-                language: 'Language',
-                sequence: 'Sequence',
-                viewer_language: 'Viewer Language',
-                manifest_language: 'Manifest Language',
-                auto_browser: 'Auto (Browser)',
-                auto: 'Auto',
-                none: 'None',
-                untitled: 'Untitled Manifest',
-                ready: 'Ready to Explore',
-                load_manifest: 'Load a IIIF manifest to get started.',
-                loading_manifest: 'Loading manifest...',
-                structure: 'Structure',
-                info: 'Info',
-                items: 'Items',
-                outline: 'Outline',
-                collection: 'Collection',
-                bookmarks: 'Bookmarks',
-                metadata: 'Metadata',
-                fulltext: 'Fulltext',
-                annotations: 'Annotations',
-                close_sidebar: 'Close Sidebar',
-                close_info: 'Close Info',
-                open_structure: 'Open Structure',
-                open_info: 'Open Info',
-                download_image: 'Download Image',
-                toggle_dark: 'Toggle Dark Mode',
-                toggle_fullscreen: 'Toggle Fullscreen',
-                provider: 'Provider',
-                attribution: 'Attribution',
-                rights: 'Rights',
-                title: 'Title',
-                summary: 'Summary',
-                back_to_start: 'Back to Start',
-                add_bookmark: 'Add Bookmark',
-                zoom: 'Zoom',
-                filters: 'Filters',
-                focus_region: 'Focus region',
-                show_full_image: 'Show full image',
-                three_d_controls: '3D Controls',
-                play_pause: 'Play/Pause',
-                back_30: 'Back 30s',
-                forward_30: 'Forward 30s',
-                prev_page: 'Previous Page',
-                next_page: 'Next Page',
-                toggle_continuous: 'Toggle Continuous Mode',
-                toggle_book: 'Toggle Book Mode',
-                collection_view_grid: 'Collection Grid View',
-                collection_view_list: 'Collection List View',
-                volume: 'Volume',
-                mute: 'Mute',
-                enlarge_video: 'Enlarge Video',
-                rotate_ccw: 'Rotate 90 CCW',
-                rotate_cw: 'Rotate 90 CW',
-                flip_h: 'Flip Horizontally',
-                flip_v: 'Flip Vertically',
-                greyscale: 'Greyscale',
-                brightness: 'Brightness',
-                contrast: 'Contrast',
-                red_channel: 'Red Channel',
-                green_channel: 'Green Channel',
-                blue_channel: 'Blue Channel',
-                auto_rotate: 'Auto rotate',
-                light_intensity: 'Light Intensity',
-                ambient_light: 'Ambient Light',
-                exposure: 'Exposure',
-                light_azimuth: 'Light Azimuth',
-                light_elevation: 'Light Elevation',
-                show_all: 'Show all',
-                show_selected: 'Show selected',
-                flow: 'Flow',
-                lines: 'Lines',
-                overlay_color: 'Overlay color',
-                overlay_color_default: 'Overlay color: default',
-                overlay_color_custom: 'Overlay color: custom',
-                no_metadata: 'No metadata available.',
-                no_fulltext: 'No fulltext available.',
-                no_fulltext_left: 'No fulltext for left page.',
-                no_fulltext_right: 'No fulltext for right page.',
-                no_annotations: 'No annotations available.',
-                no_text: 'No text',
-                no_items: 'No items available.',
-                toc: 'Table of Content',
-                no_toc: 'No table of content available.',
-                to_collection: 'To the Collection',
-                collection_items: 'Collection Items',
-                collection_members: 'Collection Members',
-                not_part_of_collection: 'Not part of a collection.',
-                bookmarks_hint: 'Bookmarks will appear here.',
-                no_bookmarks: 'No bookmarks saved.',
-                no_image_services: 'No image services found.',
-                image_unavailable: 'Image unavailable',
-                no_av_items: 'No audio/video items found.',
-                segments: 'Segments',
-                models: 'Models',
-                all_models: 'All models',
-                loading_collection: 'Loading collection…',
-                failed_collection: 'Failed to load collection.',
-                loading_fulltext: 'Loading fulltext…',
-                unsupported: 'Unsupported content type.',
-                empty_collection: 'Collection is empty or has no items.',
-                select_collection_item: 'Select an item from the sidebar to explore.'
-            },
-            de: {
-                language: 'Sprache',
-                sequence: 'Sequenz',
-                viewer_language: 'Viewer-Sprache',
-                manifest_language: 'Manifest-Sprache',
-                auto_browser: 'Auto (Browser)',
-                auto: 'Auto',
-                none: 'Ohne',
-                untitled: 'Unbenanntes Manifest',
-                ready: 'Bereit zum Erkunden',
-                load_manifest: 'Lade ein IIIF-Manifest, um zu starten.',
-                loading_manifest: 'Manifest wird geladen...',
-                structure: 'Struktur',
-                info: 'Info',
-                items: 'Seiten',
-                outline: 'Inhalt',
-                collection: 'Sammlung',
-                bookmarks: 'Lesezeichen',
-                metadata: 'Metadaten',
-                fulltext: 'Volltext',
-                annotations: 'Annotationen',
-                close_sidebar: 'Seitenleiste schließen',
-                close_info: 'Info schließen',
-                open_structure: 'Struktur öffnen',
-                open_info: 'Info öffnen',
-                download_image: 'Bild herunterladen',
-                toggle_dark: 'Dark Mode umschalten',
-                toggle_fullscreen: 'Vollbild umschalten',
-                provider: 'Anbieter',
-                attribution: 'Attribution',
-                rights: 'Rechte',
-                title: 'Titel',
-                summary: 'Zusammenfassung',
-                back_to_start: 'Zum Anfang',
-                add_bookmark: 'Lesezeichen hinzufügen',
-                zoom: 'Zoom',
-                filters: 'Filter',
-                focus_region: 'Fokus auf Bereich',
-                show_full_image: 'Ganzes Bild anzeigen',
-                three_d_controls: '3D-Steuerung',
-                play_pause: 'Abspielen/Pause',
-                back_30: '30s zurück',
-                forward_30: '30s vor',
-                prev_page: 'Vorherige Seite',
-                next_page: 'Nächste Seite',
-                toggle_continuous: 'Fortlaufend umschalten',
-                toggle_book: 'Buchmodus umschalten',
-                collection_view_grid: 'Sammlung Rasteransicht',
-                collection_view_list: 'Sammlung Listenansicht',
-                volume: 'Lautstärke',
-                mute: 'Stumm',
-                enlarge_video: 'Video vergrößern',
-                rotate_ccw: '90° links drehen',
-                rotate_cw: '90° rechts drehen',
-                flip_h: 'Horizontal spiegeln',
-                flip_v: 'Vertikal spiegeln',
-                greyscale: 'Graustufen',
-                brightness: 'Helligkeit',
-                contrast: 'Kontrast',
-                red_channel: 'Rot-Kanal',
-                green_channel: 'Grün-Kanal',
-                blue_channel: 'Blau-Kanal',
-                auto_rotate: 'Auto drehen',
-                light_intensity: 'Lichtstärke',
-                ambient_light: 'Umgebungslicht',
-                exposure: 'Belichtung',
-                light_azimuth: 'Licht-Azimut',
-                light_elevation: 'Licht-Höhe',
-                show_all: 'Alle zeigen',
-                show_selected: 'Auswahl zeigen',
-                flow: 'Fließtext',
-                lines: 'Zeilen',
-                overlay_color: 'Overlay-Farbe',
-                overlay_color_default: 'Overlay-Farbe: Standard',
-                overlay_color_custom: 'Overlay-Farbe: frei wählen',
-                no_metadata: 'Keine Metadaten verfügbar.',
-                no_fulltext: 'Kein Volltext verfügbar.',
-                no_fulltext_left: 'Kein Volltext für linke Seite.',
-                no_fulltext_right: 'Kein Volltext für rechte Seite.',
-                no_annotations: 'Keine Annotationen verfügbar.',
-                no_text: 'Kein Text',
-                no_items: 'Keine Seiten verfügbar.',
-                toc: 'Inhaltsverzeichnis',
-                no_toc: 'Kein Inhaltsverzeichnis verfügbar.',
-                to_collection: 'Zur Sammlung',
-                collection_items: 'Sammlungsobjekte',
-                collection_members: 'Sammlungsmitglieder',
-                not_part_of_collection: 'Nicht Teil einer Sammlung.',
-                bookmarks_hint: 'Lesezeichen erscheinen hier.',
-                no_bookmarks: 'Keine Lesezeichen gespeichert.',
-                no_image_services: 'Keine Bilddienste gefunden.',
-                image_unavailable: 'Bild nicht verfügbar',
-                no_av_items: 'Keine Audio/Video-Elemente gefunden.',
-                segments: 'Segmente',
-                models: 'Modelle',
-                all_models: 'Alle Modelle',
-                loading_collection: 'Sammlung wird geladen…',
-                failed_collection: 'Sammlung konnte nicht geladen werden.',
-                loading_fulltext: 'Volltext wird geladen…',
-                unsupported: 'Inhaltstyp nicht unterstützt.',
-                empty_collection: 'Sammlung ist leer oder hat keine Elemente.',
-                select_collection_item: 'Wähle ein Objekt aus der Seitenleiste.'
-            },
-            fr: {
-                language: 'Langue',
-                sequence: 'Séquence',
-                viewer_language: 'Langue du viewer',
-                manifest_language: 'Langue du manifeste',
-                auto_browser: 'Auto (navigateur)',
-                auto: 'Auto',
-                none: 'Aucune',
-                untitled: 'Manifest sans titre',
-                ready: 'Prêt à explorer',
-                load_manifest: 'Chargez un manifeste IIIF pour commencer.',
-                loading_manifest: 'Chargement du manifeste...',
-                structure: 'Structure',
-                info: 'Info',
-                items: 'Pages',
-                outline: 'Plan',
-                collection: 'Collection',
-                bookmarks: 'Signets',
-                metadata: 'Métadonnées',
-                fulltext: 'Texte intégral',
-                annotations: 'Annotations',
-                close_sidebar: 'Fermer la barre latérale',
-                close_info: 'Fermer les infos',
-                open_structure: 'Ouvrir la structure',
-                open_info: 'Ouvrir les infos',
-                download_image: 'Télécharger l’image',
-                toggle_dark: 'Basculer en mode sombre',
-                toggle_fullscreen: 'Basculer en plein écran',
-                provider: 'Fournisseur',
-                attribution: 'Attribution',
-                rights: 'Droits',
-                title: 'Titre',
-                summary: 'Résumé',
-                back_to_start: 'Retour au début',
-                add_bookmark: 'Ajouter un signet',
-                zoom: 'Zoom',
-                filters: 'Filtres',
-                focus_region: 'Zone focus',
-                show_full_image: 'Afficher l’image entière',
-                three_d_controls: 'Contrôles 3D',
-                play_pause: 'Lecture/Pause',
-                back_30: 'Retour 30 s',
-                forward_30: 'Avance 30 s',
-                prev_page: 'Page précédente',
-                next_page: 'Page suivante',
-                toggle_continuous: 'Basculer en continu',
-                toggle_book: 'Basculer mode livre',
-                collection_view_grid: 'Vue grille de la collection',
-                collection_view_list: 'Vue liste de la collection',
-                volume: 'Volume',
-                mute: 'Muet',
-                enlarge_video: 'Agrandir la vidéo',
-                rotate_ccw: 'Tourner 90° à gauche',
-                rotate_cw: 'Tourner 90° à droite',
-                flip_h: 'Retourner horizontalement',
-                flip_v: 'Retourner verticalement',
-                greyscale: 'Niveaux de gris',
-                brightness: 'Luminosité',
-                contrast: 'Contraste',
-                red_channel: 'Canal rouge',
-                green_channel: 'Canal vert',
-                blue_channel: 'Canal bleu',
-                auto_rotate: 'Rotation auto',
-                light_intensity: 'Intensité lumineuse',
-                ambient_light: 'Lumière ambiante',
-                exposure: 'Exposition',
-                light_azimuth: 'Azimut de la lumière',
-                light_elevation: 'Élévation de la lumière',
-                show_all: 'Tout afficher',
-                show_selected: 'Afficher la sélection',
-                flow: 'Texte continu',
-                lines: 'Lignes',
-                overlay_color: 'Couleur de surlignage',
-                overlay_color_default: 'Couleur de surlignage: par défaut',
-                overlay_color_custom: 'Couleur de surlignage: personnalisée',
-                no_metadata: 'Aucune métadonnée disponible.',
-                no_fulltext: 'Aucun texte intégral disponible.',
-                no_fulltext_left: 'Pas de texte pour la page gauche.',
-                no_fulltext_right: 'Pas de texte pour la page droite.',
-                no_annotations: 'Aucune annotation disponible.',
-                no_text: 'Aucun texte',
-                no_items: 'Aucune page disponible.',
-                toc: 'Table des matières',
-                no_toc: 'Aucune table des matières disponible.',
-                to_collection: 'Vers la collection',
-                collection_items: 'Objets de la collection',
-                collection_members: 'Membres de la collection',
-                not_part_of_collection: 'Pas dans une collection.',
-                bookmarks_hint: 'Les signets apparaîtront ici.',
-                no_bookmarks: 'Aucun signet enregistré.',
-                no_image_services: 'Aucun service d’images trouvé.',
-                image_unavailable: 'Image indisponible',
-                no_av_items: 'Aucun élément audio/vidéo trouvé.',
-                segments: 'Segments',
-                models: 'Modèles',
-                all_models: 'Tous les modèles',
-                loading_collection: 'Chargement de la collection…',
-                failed_collection: 'Échec du chargement de la collection.',
-                loading_fulltext: 'Chargement du texte intégral…',
-                unsupported: 'Type de contenu non pris en charge.',
-                empty_collection: 'La collection est vide ou sans éléments.',
-                select_collection_item: 'Sélectionnez un élément dans la barre latérale.'
-            },
-            it: {
-                language: 'Lingua',
-                sequence: 'Sequenza',
-                viewer_language: 'Lingua del viewer',
-                manifest_language: 'Lingua del manifesto',
-                auto_browser: 'Auto (browser)',
-                auto: 'Auto',
-                none: 'Nessuna',
-                untitled: 'Manifest senza titolo',
-                ready: 'Pronto per esplorare',
-                load_manifest: 'Carica un manifesto IIIF per iniziare.',
-                loading_manifest: 'Caricamento manifesto...',
-                structure: 'Struttura',
-                info: 'Info',
-                items: 'Pagine',
-                outline: 'Indice',
-                collection: 'Collezione',
-                bookmarks: 'Segnalibri',
-                metadata: 'Metadati',
-                fulltext: 'Testo completo',
-                annotations: 'Annotazioni',
-                close_sidebar: 'Chiudi barra laterale',
-                close_info: 'Chiudi info',
-                open_structure: 'Apri struttura',
-                open_info: 'Apri info',
-                download_image: 'Scarica immagine',
-                toggle_dark: 'Attiva/disattiva tema scuro',
-                toggle_fullscreen: 'Attiva/disattiva schermo intero',
-                provider: 'Fornitore',
-                attribution: 'Attribuzione',
-                rights: 'Diritti',
-                title: 'Titolo',
-                summary: 'Sommario',
-                back_to_start: 'Torna all’inizio',
-                add_bookmark: 'Aggiungi segnalibro',
-                zoom: 'Zoom',
-                filters: 'Filtri',
-                focus_region: 'Metti a fuoco area',
-                show_full_image: 'Mostra immagine intera',
-                three_d_controls: 'Controlli 3D',
-                play_pause: 'Play/Pausa',
-                back_30: 'Indietro 30 s',
-                forward_30: 'Avanti 30 s',
-                prev_page: 'Pagina precedente',
-                next_page: 'Pagina successiva',
-                toggle_continuous: 'Attiva/disattiva continuo',
-                toggle_book: 'Attiva/disattiva modalità libro',
-                collection_view_grid: 'Vista griglia collezione',
-                collection_view_list: 'Vista elenco collezione',
-                volume: 'Volume',
-                mute: 'Muto',
-                enlarge_video: 'Ingrandisci video',
-                rotate_ccw: 'Ruota 90° a sinistra',
-                rotate_cw: 'Ruota 90° a destra',
-                flip_h: 'Ribalta orizzontalmente',
-                flip_v: 'Ribalta verticalmente',
-                greyscale: 'Scala di grigi',
-                brightness: 'Luminosità',
-                contrast: 'Contrasto',
-                red_channel: 'Canale rosso',
-                green_channel: 'Canale verde',
-                blue_channel: 'Canale blu',
-                auto_rotate: 'Rotazione automatica',
-                light_intensity: 'Intensità luce',
-                ambient_light: 'Luce ambientale',
-                exposure: 'Esposizione',
-                light_azimuth: 'Azimut luce',
-                light_elevation: 'Elevazione luce',
-                show_all: 'Mostra tutto',
-                show_selected: 'Mostra selezionati',
-                flow: 'Testo continuo',
-                lines: 'Righe',
-                overlay_color: 'Colore evidenziazione',
-                overlay_color_default: 'Colore evidenziazione: predefinito',
-                overlay_color_custom: 'Colore evidenziazione: personalizzato',
-                no_metadata: 'Nessun metadato disponibile.',
-                no_fulltext: 'Nessun testo completo disponibile.',
-                no_fulltext_left: 'Nessun testo per la pagina sinistra.',
-                no_fulltext_right: 'Nessun testo per la pagina destra.',
-                no_annotations: 'Nessuna annotazione disponibile.',
-                no_text: 'Nessun testo',
-                no_items: 'Nessuna pagina disponibile.',
-                toc: 'Indice',
-                no_toc: 'Nessun indice disponibile.',
-                to_collection: 'Alla collezione',
-                collection_items: 'Elementi della collezione',
-                collection_members: 'Membri della collezione',
-                not_part_of_collection: 'Non parte di una collezione.',
-                bookmarks_hint: 'I segnalibri appariranno qui.',
-                no_bookmarks: 'Nessun segnalibro salvato.',
-                no_image_services: 'Nessun servizio immagini trovato.',
-                image_unavailable: 'Immagine non disponibile',
-                no_av_items: 'Nessun elemento audio/video trovato.',
-                segments: 'Segmenti',
-                models: 'Modelli',
-                all_models: 'Tutti i modelli',
-                loading_collection: 'Caricamento collezione…',
-                failed_collection: 'Caricamento collezione non riuscito.',
-                loading_fulltext: 'Caricamento testo completo…',
-                unsupported: 'Tipo di contenuto non supportato.',
-                empty_collection: 'La collezione è vuota o senza elementi.',
-                select_collection_item: 'Seleziona un elemento dalla barra laterale.'
-            },
-            es: {
-                language: 'Idioma',
-                sequence: 'Secuencia',
-                viewer_language: 'Idioma del visor',
-                manifest_language: 'Idioma del manifiesto',
-                auto_browser: 'Auto (navegador)',
-                auto: 'Auto',
-                none: 'Ninguno',
-                untitled: 'Manifiesto sin título',
-                ready: 'Listo para explorar',
-                load_manifest: 'Carga un manifiesto IIIF para comenzar.',
-                loading_manifest: 'Cargando manifiesto...',
-                structure: 'Estructura',
-                info: 'Info',
-                items: 'Páginas',
-                outline: 'Índice',
-                collection: 'Colección',
-                bookmarks: 'Marcadores',
-                metadata: 'Metadatos',
-                fulltext: 'Texto completo',
-                annotations: 'Anotaciones',
-                close_sidebar: 'Cerrar barra lateral',
-                close_info: 'Cerrar info',
-                open_structure: 'Abrir estructura',
-                open_info: 'Abrir info',
-                download_image: 'Descargar imagen',
-                toggle_dark: 'Cambiar modo oscuro',
-                toggle_fullscreen: 'Cambiar pantalla completa',
-                provider: 'Proveedor',
-                attribution: 'Atribución',
-                rights: 'Derechos',
-                title: 'Título',
-                summary: 'Resumen',
-                back_to_start: 'Volver al inicio',
-                add_bookmark: 'Añadir marcador',
-                zoom: 'Zoom',
-                filters: 'Filtros',
-                focus_region: 'Enfocar región',
-                show_full_image: 'Mostrar imagen completa',
-                three_d_controls: 'Controles 3D',
-                play_pause: 'Reproducir/Pausa',
-                back_30: 'Atrás 30 s',
-                forward_30: 'Adelante 30 s',
-                prev_page: 'Página anterior',
-                next_page: 'Página siguiente',
-                toggle_continuous: 'Alternar continuo',
-                toggle_book: 'Alternar modo libro',
-                collection_view_grid: 'Vista de cuadrícula de la colección',
-                collection_view_list: 'Vista de lista de la colección',
-                volume: 'Volumen',
-                mute: 'Silencio',
-                enlarge_video: 'Agrandar vídeo',
-                rotate_ccw: 'Girar 90° a la izquierda',
-                rotate_cw: 'Girar 90° a la derecha',
-                flip_h: 'Voltear horizontalmente',
-                flip_v: 'Voltear verticalmente',
-                greyscale: 'Escala de grises',
-                brightness: 'Brillo',
-                contrast: 'Contraste',
-                red_channel: 'Canal rojo',
-                green_channel: 'Canal verde',
-                blue_channel: 'Canal azul',
-                auto_rotate: 'Rotación automática',
-                light_intensity: 'Intensidad de luz',
-                ambient_light: 'Luz ambiental',
-                exposure: 'Exposición',
-                light_azimuth: 'Azimut de la luz',
-                light_elevation: 'Elevación de la luz',
-                show_all: 'Mostrar todo',
-                show_selected: 'Mostrar selección',
-                flow: 'Texto continuo',
-                lines: 'Líneas',
-                overlay_color: 'Color de resaltado',
-                overlay_color_default: 'Color de resaltado: predeterminado',
-                overlay_color_custom: 'Color de resaltado: personalizado',
-                no_metadata: 'No hay metadatos disponibles.',
-                no_fulltext: 'No hay texto completo disponible.',
-                no_fulltext_left: 'Sin texto para la página izquierda.',
-                no_fulltext_right: 'Sin texto para la página derecha.',
-                no_annotations: 'No hay anotaciones disponibles.',
-                no_text: 'Sin texto',
-                no_items: 'No hay páginas disponibles.',
-                toc: 'Tabla de contenidos',
-                no_toc: 'No hay tabla de contenidos disponible.',
-                to_collection: 'A la colección',
-                collection_items: 'Elementos de la colección',
-                collection_members: 'Miembros de la colección',
-                not_part_of_collection: 'No forma parte de una colección.',
-                bookmarks_hint: 'Los marcadores aparecerán aquí.',
-                no_bookmarks: 'No hay marcadores guardados.',
-                no_image_services: 'No se encontraron servicios de imagen.',
-                image_unavailable: 'Imagen no disponible',
-                no_av_items: 'No se encontraron elementos de audio/vídeo.',
-                segments: 'Segmentos',
-                models: 'Modelos',
-                all_models: 'Todos los modelos',
-                loading_collection: 'Cargando colección…',
-                failed_collection: 'No se pudo cargar la colección.',
-                loading_fulltext: 'Cargando texto completo…',
-                unsupported: 'Tipo de contenido no compatible.',
-                empty_collection: 'La colección está vacía o sin elementos.',
-                select_collection_item: 'Selecciona un elemento en la barra lateral.'
-            },
-            nl: {
-                language: 'Taal',
-                sequence: 'Volgorde',
-                viewer_language: 'Viewer-taal',
-                manifest_language: 'Manifest-taal',
-                auto_browser: 'Auto (browser)',
-                auto: 'Auto',
-                none: 'Geen',
-                untitled: 'Manifest zonder titel',
-                ready: 'Klaar om te verkennen',
-                load_manifest: 'Laad een IIIF-manifest om te beginnen.',
-                loading_manifest: 'Manifest laden...',
-                structure: 'Structuur',
-                info: 'Info',
-                items: 'Pagina’s',
-                outline: 'Inhoud',
-                collection: 'Collectie',
-                bookmarks: 'Bladwijzers',
-                metadata: 'Metadata',
-                fulltext: 'Volledige tekst',
-                annotations: 'Annotaties',
-                close_sidebar: 'Zijbalk sluiten',
-                close_info: 'Info sluiten',
-                open_structure: 'Structuur openen',
-                open_info: 'Info openen',
-                download_image: 'Afbeelding downloaden',
-                toggle_dark: 'Donkere modus wisselen',
-                toggle_fullscreen: 'Volledig scherm wisselen',
-                provider: 'Provider',
-                attribution: 'Attributie',
-                rights: 'Rechten',
-                title: 'Titel',
-                summary: 'Samenvatting',
-                back_to_start: 'Terug naar start',
-                add_bookmark: 'Bladwijzer toevoegen',
-                zoom: 'Zoom',
-                filters: 'Filters',
-                focus_region: 'Regio focussen',
-                show_full_image: 'Toon volledige afbeelding',
-                three_d_controls: '3D-bediening',
-                play_pause: 'Afspelen/Pauze',
-                back_30: '30 s terug',
-                forward_30: '30 s vooruit',
-                prev_page: 'Vorige pagina',
-                next_page: 'Volgende pagina',
-                toggle_continuous: 'Doorlopend wisselen',
-                toggle_book: 'Boekmodus wisselen',
-                collection_view_grid: 'Collectie rasterweergave',
-                collection_view_list: 'Collectie lijstweergave',
-                volume: 'Volume',
-                mute: 'Dempen',
-                enlarge_video: 'Video vergroten',
-                rotate_ccw: '90° links draaien',
-                rotate_cw: '90° rechts draaien',
-                flip_h: 'Horizontaal spiegelen',
-                flip_v: 'Verticaal spiegelen',
-                greyscale: 'Grijstinten',
-                brightness: 'Helderheid',
-                contrast: 'Contrast',
-                red_channel: 'Rood kanaal',
-                green_channel: 'Groen kanaal',
-                blue_channel: 'Blauw kanaal',
-                auto_rotate: 'Automatisch draaien',
-                light_intensity: 'Lichtintensiteit',
-                ambient_light: 'Omgevingslicht',
-                exposure: 'Belichting',
-                light_azimuth: 'Licht-azimut',
-                light_elevation: 'Licht-elevatie',
-                show_all: 'Alles tonen',
-                show_selected: 'Selectie tonen',
-                flow: 'Doorlopende tekst',
-                lines: 'Regels',
-                overlay_color: 'Overlaykleur',
-                overlay_color_default: 'Overlaykleur: standaard',
-                overlay_color_custom: 'Overlaykleur: aangepast',
-                no_metadata: 'Geen metadata beschikbaar.',
-                no_fulltext: 'Geen volledige tekst beschikbaar.',
-                no_fulltext_left: 'Geen tekst voor de linkerpagina.',
-                no_fulltext_right: 'Geen tekst voor de rechterpagina.',
-                no_annotations: 'Geen annotaties beschikbaar.',
-                no_text: 'Geen tekst',
-                no_items: 'Geen pagina’s beschikbaar.',
-                toc: 'Inhoudsopgave',
-                no_toc: 'Geen inhoudsopgave beschikbaar.',
-                to_collection: 'Naar de collectie',
-                collection_items: 'Collectie-items',
-                collection_members: 'Collectieleden',
-                not_part_of_collection: 'Geen onderdeel van een collectie.',
-                bookmarks_hint: 'Bladwijzers verschijnen hier.',
-                no_bookmarks: 'Geen bladwijzers opgeslagen.',
-                no_image_services: 'Geen afbeeldingsdiensten gevonden.',
-                image_unavailable: 'Afbeelding niet beschikbaar',
-                no_av_items: 'Geen audio-/video-items gevonden.',
-                segments: 'Segmenten',
-                models: 'Modellen',
-                all_models: 'Alle modellen',
-                loading_collection: 'Collectie laden…',
-                failed_collection: 'Collectie laden mislukt.',
-                loading_fulltext: 'Volledige tekst laden…',
-                unsupported: 'Inhoudstype niet ondersteund.',
-                empty_collection: 'Collectie is leeg of heeft geen items.',
-                select_collection_item: 'Selecteer een item in de zijbalk.'
-            }
-        };
-        const lang = this.viewerLanguage && dict[this.viewerLanguage] ? this.viewerLanguage : 'en';
-        return dict[lang]?.[key] || dict.en[key] || key;
+        return translate(key, this.viewerLanguage);
     }
 
     getBrowserLanguage() {
-        if (typeof navigator === 'undefined') return 'en';
-        const lang = navigator.language || (Array.isArray(navigator.languages) ? navigator.languages[0] : 'en');
-        return this.normalizeLang(lang);
+        return getBrowserLanguageHelper();
     }
 
     normalizeLang(lang) {
-        if (!lang) return '';
-        return String(lang).toLowerCase().split('-')[0];
+        return normalizeLangHelper(lang);
     }
 
     resolveViewerLanguage() {
-        const saved = this.getCookie('mimir_viewer_lang');
-        if (saved) {
-            this.viewerLanguageMode = 'manual';
-            return this.normalizeLang(saved);
-        }
-        this.viewerLanguageMode = 'auto';
-        const browser = this.normalizeLang(this.browserLanguage);
-        if (this.supportedViewerLanguages.includes(browser)) return browser;
-        if (this.supportedViewerLanguages.includes('en')) return 'en';
-        return this.supportedViewerLanguages[0] || 'en';
+        const { viewerLanguage, viewerLanguageMode } = resolveViewerLanguageHelper({
+            getCookie: (name) => this.getCookie(name),
+            browserLanguage: this.browserLanguage,
+            supportedViewerLanguages: this.supportedViewerLanguages
+        });
+        this.viewerLanguageMode = viewerLanguageMode;
+        return viewerLanguage;
     }
 
     collectManifestLanguages(obj) {
-        const langs = new Set();
-        const isLangMap = (val) => {
-            if (!val || typeof val !== 'object' || Array.isArray(val)) return false;
-            const keys = Object.keys(val);
-            if (!keys.length) return false;
-            const blocked = new Set(['id', 'type', '@id', '@type', '@context']);
-            let match = 0;
-            let total = 0;
-            keys.forEach(k => {
-                const v = val[k];
-                const looksLike = !blocked.has(k) && (k === 'none' || /^[a-z]{2,3}(-[a-z0-9]+)?$/i.test(k));
-                const hasValue = Array.isArray(v) || typeof v === 'string';
-                if (looksLike && hasValue) match += 1;
-                total += 1;
-            });
-            return match > 0 && match === total;
-        };
-        const walk = (node) => {
-            if (!node) return;
-            if (Array.isArray(node)) {
-                node.forEach(walk);
-                return;
-            }
-            if (typeof node === 'object') {
-                if (isLangMap(node)) {
-                    Object.keys(node).forEach(k => langs.add(this.normalizeLang(k) || k));
-                    return;
-                }
-                Object.values(node).forEach(walk);
-            }
-        };
-        walk(obj);
-        return Array.from(langs).filter(Boolean);
+        return collectManifestLanguagesHelper(obj);
     }
 
     pickManifestLanguage(langs) {
-        const available = langs.map(l => this.normalizeLang(l) || l);
-        if (!available.length) return '';
-        const desired = this.manifestLanguage && this.manifestLanguage !== 'auto'
-            ? this.normalizeLang(this.manifestLanguage)
-            : '';
-        if (desired && available.includes(desired)) return desired;
-        const viewer = this.normalizeLang(this.viewerLanguage);
-        if (viewer && available.includes(viewer)) return viewer;
-        const browser = this.normalizeLang(this.browserLanguage);
-        if (browser && available.includes(browser)) return browser;
-        if (available.includes('none')) return 'none';
-        if (available.includes('en')) return 'en';
-        return available[0];
+        return pickManifestLanguageHelper(langs, {
+            manifestLanguage: this.manifestLanguage,
+            viewerLanguage: this.viewerLanguage,
+            browserLanguage: this.browserLanguage
+        });
     }
 
     resolveLangValue(value, fallback = '') {
-        if (value == null) return fallback;
-        if (typeof value === 'string') return value;
-        if (Array.isArray(value)) {
-            return this.resolveLangValue(value[0], fallback);
-        }
-        if (typeof value === 'object') {
-            const keys = Object.keys(value);
-            const isLangMap = keys.some(k => k === 'none' || /^[a-z]{2,3}(-[a-z0-9]+)?$/i.test(k));
-            if (isLangMap) {
-                const pref = [
-                    this.activeManifestLanguage,
-                    this.normalizeLang(this.viewerLanguage),
-                    this.normalizeLang(this.browserLanguage),
-                    'none',
-                    'en'
-                ].filter(Boolean);
-                const keys = Object.keys(value);
-                const pick = (lang) => value[lang] ?? value[keys.find(k => this.normalizeLang(k) === lang)];
-                for (const lang of pref) {
-                    const v = pick(lang);
-                    if (v != null) return this.resolveLangValue(v, fallback);
-                }
-                const first = value[keys[0]];
-                return this.resolveLangValue(first, fallback);
-            }
-            const firstVal = value[keys[0]];
-            return this.resolveLangValue(firstVal, fallback);
-        }
-        return fallback;
+        return resolveLangValueHelper(value, {
+            fallback,
+            activeManifestLanguage: this.activeManifestLanguage,
+            viewerLanguage: this.viewerLanguage,
+            browserLanguage: this.browserLanguage
+        });
     }
 
     getLanguageDisplayName(code) {
-        if (!code) return '';
-        if (code === 'none') return this.t('none');
-        try {
-            const dn = new Intl.DisplayNames([this.viewerLanguage || 'en'], { type: 'language' });
-            return dn.of(code) || code;
-        } catch {
-            return code;
-        }
+        return getLanguageDisplayNameHelper(code, {
+            viewerLanguage: this.viewerLanguage,
+            noneLabel: this.t('none')
+        });
     }
 
     updateLanguageMenu() {
@@ -6801,9 +6197,7 @@ export class MimirExplorer {
             if (tabAnno) tabAnno.setAttribute('data-tooltip', this.t('annotations'));
             if (this.els.infoClose) this.els.infoClose.title = this.t('close_info');
         }
-        if (this.els.fulltextToggle) {
-            this.els.fulltextToggle.textContent = this.fulltextMode === 'lines' ? this.t('flow') : this.t('lines');
-        }
+        this.updateFulltextModeUI();
         if (this.els.fulltextColorPalette) {
             this.renderFulltextColorPalette();
         }
@@ -6845,6 +6239,7 @@ export class MimirExplorer {
         if (this.els.btns.next) this.els.btns.next.title = this.t('next_page');
         if (this.els.btns.continuousToggle) this.els.btns.continuousToggle.title = this.t('toggle_continuous');
         if (this.els.btns.bookToggle) this.els.btns.bookToggle.title = this.t('toggle_book');
+        if (this.els.btns.fulltextOverlayToggle) this.els.btns.fulltextOverlayToggle.title = this.t('toggle_fulltext_overlay');
         if (this.els.btns.collectionViewToggle) this.els.btns.collectionViewToggle.title = this.t('collection_view_list');
         if (this.els.btns.download) this.els.btns.download.title = this.t('download_image');
         if (this.els.btns.topDarkToggle) this.els.btns.topDarkToggle.title = this.t('toggle_dark');
@@ -6873,6 +6268,10 @@ export class MimirExplorer {
         if (emptySub) emptySub.textContent = this.t('load_manifest');
         const loaderText = this.els.loader?.querySelector('.mimir-loader-text');
         if (loaderText) loaderText.textContent = this.t('loading_manifest');
+        if (this.els.pageLabel) {
+            const idx = this.isBookMode ? this.bookPageIndex : (this.osdExplorer?.currentPage?.() ?? 0);
+            this.updatePageLabel(idx);
+        }
         this.updateRegionToggleUI();
     }
 
@@ -6890,6 +6289,7 @@ export class MimirExplorer {
             this.fulltextSourcesByCanvasId = this.currentParsed.fulltextSourcesByCanvasId || this.fulltextSourcesByCanvasId;
             this.applySequenceToParsed(this.currentParsed, this.sequenceMode);
         }
+        this.updateFulltextOverlayUI();
         this.updateTopBar(this.currentParsed?.type, this.currentManifest, this.currentParsed);
         this.updateStructure(this.currentParsed);
         this.updateMetadata(this.currentManifest, this.currentParsed);
@@ -6907,6 +6307,26 @@ export class MimirExplorer {
         return match ? decodeURIComponent(match[1]) : '';
     }
 
+    getSessionFlag(name, fallback = false) {
+        if (typeof sessionStorage === 'undefined') return fallback;
+        try {
+            const value = sessionStorage.getItem(name);
+            if (value == null) return fallback;
+            return value === 'true';
+        } catch {
+            return fallback;
+        }
+    }
+
+    setSessionFlag(name, value) {
+        if (typeof sessionStorage === 'undefined') return;
+        try {
+            sessionStorage.setItem(name, value ? 'true' : 'false');
+        } catch {
+            // ignore session storage failures
+        }
+    }
+
     setCookie(name, value, maxAge = 31536000) {
         if (typeof document === 'undefined') return;
         document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAge}`;
@@ -6918,615 +6338,23 @@ export class MimirExplorer {
     }
 
     parseManifest(manifest) {
-        const asArray = (val) => (Array.isArray(val) ? val : (val ? [val] : []));
-        const getId = (obj) => this.ensureHttps((obj && (obj.id || obj['@id'])) || null);
-        const getType = (obj) => (obj && (obj.type || obj['@type'])) || '';
-        const manifestLanguages = this.collectManifestLanguages(manifest);
-        this.activeManifestLanguage = this.pickManifestLanguage(manifestLanguages);
-        const getLabel = (label, fallback = '') => this.resolveLangValue(label, fallback);
-        const getSummary = (summary) => getLabel(summary);
-        const escapeHtml = (text) => String(text)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/\"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-        const extractImageServiceId = (service) => {
-            const services = asArray(service);
-            for (const svc of services) {
-                const type = getType(svc);
-                const profile = svc?.profile;
-                const id = getId(svc);
-                const profileStr = typeof profile === 'string' ? profile : '';
-                if (type.includes('ImageService') || profileStr.includes('iiif.io/api/image')) {
-                    if (id) return id.endsWith('/info.json') ? id : `${id}/info.json`;
-                }
-            }
-            return null;
-        };
-        const extractFulltextSourcesFromSeeAlso = (seeAlso) => {
-            const sources = [];
-            asArray(seeAlso).forEach((s) => {
-                if (!s) return;
-                const id = getId(s) || (typeof s === 'string' ? s : '');
-                if (!id) return;
-                const format = (s.format || '').toLowerCase();
-                const profile = (s.profile || '').toLowerCase();
-                const label = getLabel(s.label).toLowerCase();
-                const isAlto = format.includes('alto') || profile.includes('alto') || label.includes('alto') || id.toLowerCase().includes('alto');
-                const isXml = format.includes('xml') || id.toLowerCase().endsWith('.xml');
-                if (isAlto || isXml) sources.push(id);
-            });
-            return sources;
-        };
-        const extractXYWH = (val) => {
-            if (!val || typeof val !== 'string') return null;
-            const match = val.match(/xywh=([^&]+)/);
-            if (!match) return null;
-            const raw = match[1].replace(/^pixel:/, '').replace(/^pct:/, '').trim();
-            const nums = raw.split(',').map(Number);
-            if (nums.length !== 4 || nums.some(n => !Number.isFinite(n))) return null;
-            return nums;
-        };
-        const parseTarget = (target, fallbackCanvasId) => {
-            if (!target) return { canvasId: fallbackCanvasId, xywh: null };
-            if (typeof target === 'string') {
-                const [base, fragment] = target.split('#');
-                const xywh = extractXYWH(fragment || target);
-                return { canvasId: base || fallbackCanvasId, xywh };
-            }
-            if (Array.isArray(target)) return parseTarget(target[0], fallbackCanvasId);
-            const source = target.source || target.id || target['@id'];
-            const selectors = asArray(target.selector || target.selectors);
-            let xywh = null;
-            selectors.forEach(sel => {
-                if (xywh) return;
-                const value = sel?.value || sel?.['@value'] || '';
-                xywh = extractXYWH(value);
-                if (!xywh && String(sel?.type || sel?.['@type']).includes('Svg')) {
-                    xywh = extractSvgXYWH(value);
-                }
-            });
-            return { canvasId: source || fallbackCanvasId, xywh };
-        };
-        const extractTextBodies = (body) => {
-            const bodies = asArray(body);
-            const results = [];
-            bodies.forEach(b => {
-                if (!b) return;
-                const type = getType(b);
-                const format = b.format || '';
-                if (type === 'SpecificResource' && b.source) {
-                    results.push(...extractTextBodies(b.source));
-                    return;
-                }
-                const value = b.value || b.chars || b.text || b['@value'] || (typeof b === 'string' ? b : '');
-                if (!value) return;
-                const isText = type === 'TextualBody' || format.startsWith('text/');
-                if (!isText && typeof b !== 'string') return;
-                const isHtml = format.includes('html');
-                const html = isHtml ? value : `<p>${escapeHtml(value).replace(/\\n/g, '<br>')}</p>`;
-                const label = getLabel(b.label);
-                results.push({ html, label });
-            });
-            return results;
-        };
-        const parseAnnotationPages = (pages, canvasId, annotationPageRefs, fulltextPageRefs, fulltextSourcesByCanvasId) => {
-            const annotations = [];
-            asArray(pages).forEach(page => {
-                const pageStylesheets = [];
-                const pageSheet = page?.stylesheet || page?.styleSheet;
-                if (pageSheet) {
-                    if (typeof pageSheet === 'string') pageStylesheets.push(pageSheet);
-                    else if (Array.isArray(pageSheet)) {
-                        pageSheet.forEach(s => pageStylesheets.push(s.id || s['@id'] || s));
-                    } else pageStylesheets.push(pageSheet.id || pageSheet['@id']);
-                }
-                if (typeof page === 'string') {
-                    annotationPageRefs.push({ id: page, canvasId });
-                    fulltextPageRefs.push({ id: page, canvasId });
-                    return;
-                }
-                if (page && !page.items && !page.annotations && !page.resources && (page.id || page['@id'])) {
-                    annotationPageRefs.push({ id: page.id || page['@id'], canvasId });
-                    fulltextPageRefs.push({ id: page.id || page['@id'], canvasId });
-                    return;
-                }
-                const items = asArray(page?.items || page?.annotations || page?.resources);
-                const fulltextSources = this.extractAltoSourcesFromItems(items);
-                if (fulltextSources.length) {
-                    if (!fulltextSourcesByCanvasId[canvasId]) fulltextSourcesByCanvasId[canvasId] = [];
-                    fulltextSources.forEach(src => {
-                        if (!fulltextSourcesByCanvasId[canvasId].includes(src)) {
-                            fulltextSourcesByCanvasId[canvasId].push(src);
-                        }
-                    });
-                }
-                items.forEach((anno) => {
-                    if (!anno) return;
-                    const motivation = anno.motivation || '';
-                    const textBodies = extractTextBodies(anno.body || anno.resource);
-                    if (!textBodies.length) return;
-                    if (String(motivation).includes('painting')) return;
-                    const targetInfo = parseTarget(anno.target || anno.on, canvasId);
-                    const html = textBodies.map(b => b.html).join('');
-                    const label = getLabel(anno.label) || textBodies[0]?.label || '';
-                    const id = getId(anno) || `${canvasId || 'canvas'}-anno-${annotations.length + 1}`;
-                    const stylesheets = [...pageStylesheets];
-                    const stylesheet = anno.stylesheet || anno.styleSheet;
-                    if (stylesheet) {
-                        if (typeof stylesheet === 'string') stylesheets.push(stylesheet);
-                        else if (Array.isArray(stylesheet)) {
-                            stylesheet.forEach(s => stylesheets.push(s.id || s['@id'] || s));
-                        } else stylesheets.push(stylesheet.id || stylesheet['@id']);
-                    }
-                    const styleClass = anno.styleClass || anno.class || anno.body?.styleClass || anno.target?.styleClass || '';
-                    annotations.push({
-                        id,
-                        label,
-                        html,
-                        canvasId: targetInfo.canvasId || canvasId,
-                        xywh: targetInfo.xywh,
-                        styleClass,
-                        stylesheets: stylesheets.filter(Boolean).map(href => this.ensureHttps(href))
-                    });
-                });
-            });
-            return annotations;
-        };
-        const parseBody = (body) => {
-            const bodies = asArray(body);
-            const imageSources = [];
-            const avItems = [];
-            const modelItems = [];
-            const cameraItems = [];
-            bodies.forEach(b => {
-                if (!b) return;
-                const type = getType(b);
-                const id = getId(b);
-                const format = b.format || '';
-                if (type === 'SpecificResource' && b.source) {
-                    const nested = parseBody(b.source);
-                    imageSources.push(...nested.imageSources);
-                    avItems.push(...nested.avItems);
-                    modelItems.push(...nested.modelItems);
-                    cameraItems.push(...nested.cameraItems);
-                }
-                const serviceId = extractImageServiceId(b.service || b.services);
-                if (serviceId) imageSources.push(serviceId);
-                else if (format.startsWith('image/') && id) imageSources.push({ type: 'image', url: id });
-                if (id) {
-                    if (type === 'Sound') {
-                        avItems.push({ id, mediaType: 'audio', label: getLabel(b.label) });
-                    } else if (type === 'Video') {
-                        avItems.push({ id, mediaType: 'video', label: getLabel(b.label) });
-                    } else if (format.startsWith('audio/')) {
-                        avItems.push({ id, mediaType: 'audio', label: getLabel(b.label) });
-                    } else if (format.startsWith('video/')) {
-                        avItems.push({ id, mediaType: 'video', label: getLabel(b.label) });
-                    }
-                }
-                if ((type === 'Model' || format.includes('gltf') || (typeof id === 'string' && (id.endsWith('.glb') || id.endsWith('.gltf')))) && id) {
-                    modelItems.push({ id, label: getLabel(b.label) });
-                }
-                if (type === 'PerspectiveCamera' && id) {
-                    cameraItems.push({
-                        id,
-                        label: getLabel(b.label),
-                        fieldOfView: b.fieldOfView ?? b.fov,
-                        near: b.near,
-                        far: b.far
-                    });
-                }
-            });
-            return { imageSources, avItems, modelItems, cameraItems };
-        };
-        const parseCanvas = (canvas, annotationPageRefs, fulltextPageRefs, fulltextSourcesByCanvasId) => {
-            const imageSources = [];
-            const avItems = [];
-            const modelItems = [];
-            const cameraItems = [];
-            let region = null;
-            const metadata = asArray(canvas.metadata).map(m => ({
-                label: getLabel(m.label),
-                value: getLabel(m.value)
-            })).filter(m => m.label || m.value);
-            const placeholderCanvas = canvas.placeholderCanvas;
-            const accompanyingCanvas = canvas.accompanyingCanvas;
-            const resolveImageUrl = (src) => {
-                if (!src) return null;
-                if (typeof src === 'string') {
-                    const safe = this.ensureHttps(src);
-                    if (safe.endsWith('/info.json')) return `${safe.slice(0, -10)}/full/max/0/default.jpg`;
-                    return safe;
-                }
-                if (src.url) return this.ensureHttps(src.url);
-                return null;
-            };
-            const extractImageSourcesFromItems = (items) => {
-                const list = [];
-                const annos = [];
-                asArray(items).forEach(entry => {
-                    if (!entry) return;
-                    const type = String(getType(entry)).toLowerCase();
-                    if (type.includes('annotationpage') || entry.items) {
-                        annos.push(...asArray(entry.items));
-                    } else if (type.includes('annotation') || entry.body || entry.resource) {
-                        annos.push(entry);
-                    }
-                });
-                annos.forEach(anno => {
-                    const motivation = anno.motivation || '';
-                    const motivations = Array.isArray(motivation) ? motivation.map(m => String(m).toLowerCase()) : [String(motivation).toLowerCase()];
-                    if (!motivation || motivations.some(m => m.includes('painting'))) {
-                        const parsed = parseBody(anno.body || anno.resource);
-                        list.push(...parsed.imageSources);
-                    }
-                });
-                return list;
-            };
-            let placeholderImage = null;
-            if (placeholderCanvas && typeof placeholderCanvas === 'object') {
-                const placeholderSources = extractImageSourcesFromItems(placeholderCanvas.items || placeholderCanvas.annotations || placeholderCanvas.otherContent);
-                if (placeholderSources.length) {
-                    const src = placeholderSources[0];
-                    placeholderImage = resolveImageUrl(src) || this.resolveThumb(src, 400);
-                }
-            }
-            let accompanyingImage = null;
-            if (accompanyingCanvas && typeof accompanyingCanvas === 'object') {
-                const accompanyingSources = extractImageSourcesFromItems(accompanyingCanvas.items || accompanyingCanvas.annotations || accompanyingCanvas.otherContent);
-                if (accompanyingSources.length) {
-                    const src = accompanyingSources[0];
-                    accompanyingImage = resolveImageUrl(src) || this.resolveThumb(src, 400);
-                }
-            }
-            const collectAnnos = (container) => {
-                const list = [];
-                asArray(container).forEach(entry => {
-                    if (!entry) return;
-                    const type = String(getType(entry)).toLowerCase();
-                    if (type.includes('annotationpage') || entry.items) {
-                        list.push(...asArray(entry.items));
-                    } else if (type.includes('annotation') || entry.body || entry.resource) {
-                        list.push(entry);
-                    }
-                });
-                return list;
-            };
-            const annos = [
-                ...collectAnnos(canvas.items),
-                ...collectAnnos(canvas.annotations),
-                ...collectAnnos(canvas.otherContent)
-            ];
-            annos.forEach(anno => {
-                if (!anno) return;
-                const motivation = anno.motivation || '';
-                const motivations = Array.isArray(motivation) ? motivation.map(m => String(m).toLowerCase()) : [String(motivation).toLowerCase()];
-                if (!motivation || motivations.some(m => m.includes('painting'))) {
-                    const parsed = parseBody(anno.body || anno.resource);
-                    if (!region) {
-                        const foundRegion = this.extractImageApiRegion(anno.body || anno.resource);
-                        if (foundRegion) region = foundRegion;
-                    }
-                    const point = this.extractPointSelector(anno.target || anno.on);
-                    imageSources.push(...parsed.imageSources);
-                    parsed.avItems.forEach(item => avItems.push({ ...item, canvasId: getId(canvas) }));
-                    const models = point ? parsed.modelItems.map(m => ({ ...m, position: point })) : parsed.modelItems;
-                    modelItems.push(...models);
-                    cameraItems.push(...parsed.cameraItems);
-                }
-            });
-            const images = asArray(canvas.images);
-            images.forEach(img => {
-                const res = img.resource || img.body;
-                const parsed = parseBody(res);
-                imageSources.push(...parsed.imageSources);
-            });
-            const pickThumb = (val) => {
-                if (!val) return null;
-                if (typeof val === 'string') return val;
-                if (Array.isArray(val)) return pickThumb(val[0]);
-                return val.id || val['@id'] || (val.service && getId(val.service)) || null;
-            };
-            const thumbFromSource = (src) => {
-                if (!src) return null;
-                if (typeof src === 'string') {
-                    const base = src.endsWith('/info.json') ? src.slice(0, -10) : src;
-                    return `${base}/full/!200,200/0/default.jpg`;
-                }
-                if (src.url) return src.url;
-                return null;
-            };
-            const thumbnail = pickThumb(canvas.thumbnail) || thumbFromSource(imageSources[0]) || null;
-            const annotations = [
-                ...parseAnnotationPages(canvas.annotations, getId(canvas), annotationPageRefs, fulltextPageRefs, fulltextSourcesByCanvasId),
-                ...parseAnnotationPages(canvas.items, getId(canvas), annotationPageRefs, fulltextPageRefs, fulltextSourcesByCanvasId),
-                ...parseAnnotationPages(canvas.otherContent, getId(canvas), annotationPageRefs, fulltextPageRefs, fulltextSourcesByCanvasId)
-            ];
-            const seeAlsoSources = extractFulltextSourcesFromSeeAlso(canvas.seeAlso);
-            if (seeAlsoSources.length) {
-                const key = getId(canvas);
-                if (key) {
-                    if (!fulltextSourcesByCanvasId[key]) fulltextSourcesByCanvasId[key] = [];
-                    seeAlsoSources.forEach(src => {
-                        if (!fulltextSourcesByCanvasId[key].includes(src)) fulltextSourcesByCanvasId[key].push(src);
-                    });
-                }
-            }
-            return {
-                id: getId(canvas),
-                label: getLabel(canvas.label),
-                imageSources,
-                avItems,
-                modelItems,
-                cameraItems,
-                thumbnail,
-                annotations,
-                region,
-                metadata,
-                placeholderImage
-                ,
-                accompanyingImage
-            };
-        };
-        const manifestType = getType(manifest).toLowerCase();
-        const behavior = asArray(manifest.behavior).map(b => (typeof b === 'string' ? b.toLowerCase() : '')).filter(Boolean);
-        const isCollection = manifestType.includes('collection');
-        const label = getLabel(manifest.label);
-        const summary = getSummary(manifest.summary || manifest.description);
-        const metadata = asArray(manifest.metadata);
-        const context = manifest['@context'];
-        const contextStr = Array.isArray(context) ? context.join(' ') : (context || '');
-        const presentationVersion = contextStr.includes('presentation/2') ? 'v2' : (contextStr.includes('presentation/3') ? 'v3' : '');
-        const prettyType = (() => {
-            const kind = (manifest.type || manifest['@type'] || 'Manifest').toString().replace('sc:', '').replace('oa:', '');
-            return `IIIF Presentation ${presentationVersion ? presentationVersion + ' ' : ''}${kind}`.trim();
-        })();
-        const requiredStatement = manifest.requiredStatement || {};
-        const attributionLabel = getLabel(requiredStatement.label) || 'Attribution';
-        const attribution = getLabel(requiredStatement.value || manifest.attribution || '');
-        const pickHomepage = (home) => {
-            if (!home) return null;
-            if (typeof home === 'string') return home;
-            if (Array.isArray(home)) return pickHomepage(home[0]);
-            return home.id || home['@id'] || home.url || null;
-        };
-        const pickLogo = (logo) => {
-            if (!logo) return null;
-            if (typeof logo === 'string') return logo;
-            if (Array.isArray(logo)) return pickLogo(logo[0]);
-            return logo.id || logo['@id'] || logo.url || (logo.service && getId(logo.service)) || null;
-        };
-        const provider = (() => {
-            const raw = asArray(manifest.provider)[0];
-            if (!raw) return {};
-            return {
-                label: getLabel(raw.label),
-                homepage: pickHomepage(raw.homepage),
-                logoUrl: pickLogo(raw.logo || raw.image || raw.thumbnail)
-            };
-        })();
-        const logoUrl = pickLogo(manifest.logo);
-        const license = getLabel(manifest.license || manifest.rights || '');
-
-        const canvases = [];
-        const canvasIndexById = {};
-        const imageSources = [];
-        const avItems = [];
-        const modelItems = [];
-        const cameraItems = [];
-        const annotationsByCanvasId = {};
-        const annotationPageRefs = [];
-        const fulltextPageRefs = [];
-        const fulltextSourcesByCanvasId = {};
-
-        const v3Canvases = asArray(manifest.items);
-        if (v3Canvases.length) {
-            v3Canvases.forEach(c => {
-                const parsed = parseCanvas(c, annotationPageRefs, fulltextPageRefs, fulltextSourcesByCanvasId);
-                const idx = canvases.length;
-                canvases.push({
-                    id: parsed.id,
-                    label: parsed.label,
-                    thumbnail: parsed.thumbnail,
-                    imageSources: parsed.imageSources,
-                    region: parsed.region,
-                    placeholderImage: parsed.placeholderImage,
-                    accompanyingImage: parsed.accompanyingImage
-                });
-                if (parsed.id) canvasIndexById[parsed.id] = idx;
-                imageSources.push(...parsed.imageSources);
-                avItems.push(...parsed.avItems);
-                modelItems.push(...parsed.modelItems);
-                cameraItems.push(...parsed.cameraItems);
-                parsed.annotations?.forEach((anno) => {
-                    const key = anno.canvasId || parsed.id;
-                    if (!key) return;
-                    if (!annotationsByCanvasId[key]) annotationsByCanvasId[key] = [];
-                    annotationsByCanvasId[key].push(anno);
-                });
-            });
-        }
-        const v2Seq = asArray(manifest.sequences)[0];
-        const v2Canvases = v2Seq ? asArray(v2Seq.canvases) : [];
-        if (v2Canvases.length) {
-            v2Canvases.forEach(c => {
-                const parsed = parseCanvas(c, annotationPageRefs, fulltextPageRefs, fulltextSourcesByCanvasId);
-                const idx = canvases.length;
-                canvases.push({
-                    id: parsed.id,
-                    label: parsed.label,
-                    thumbnail: parsed.thumbnail,
-                    imageSources: parsed.imageSources,
-                    region: parsed.region,
-                    placeholderImage: parsed.placeholderImage,
-                    accompanyingImage: parsed.accompanyingImage
-                });
-                if (parsed.id) canvasIndexById[parsed.id] = idx;
-                imageSources.push(...parsed.imageSources);
-                avItems.push(...parsed.avItems);
-                modelItems.push(...parsed.modelItems);
-                cameraItems.push(...parsed.cameraItems);
-                parsed.annotations?.forEach((anno) => {
-                    const key = anno.canvasId || parsed.id;
-                    if (!key) return;
-                    if (!annotationsByCanvasId[key]) annotationsByCanvasId[key] = [];
-                    annotationsByCanvasId[key].push(anno);
-                });
-            });
-        }
-
-        const normalizeCanvasId = (id) => (typeof id === 'string' ? id.split('#')[0] : id);
-        const topRanges = asArray(manifest.structures || manifest.ranges);
-        const sequenceOptions = topRanges.map((range, idx) => {
-            if (!range) return null;
-            const items = asArray(range.items || range.canvases || range.members);
-            const canvasIds = items.map(getId).filter(Boolean).map(normalizeCanvasId)
-                .filter(id => canvasIndexById[id] !== undefined);
-            if (canvasIds.length < 2) return null;
-            const id = getId(range) || `sequence-${idx + 1}`;
-            const label = getLabel(range.label) || `Sequence ${idx + 1}`;
-            return { id, label, canvasIds };
-        }).filter(Boolean);
-
-        const parseStartTime = (selector) => {
-            if (!selector) return null;
-            const sel = Array.isArray(selector) ? selector[0] : selector;
-            const type = String(sel?.type || sel?.['@type'] || '').toLowerCase();
-            if (type.includes('pointselector') && Number.isFinite(Number(sel.t))) return Number(sel.t);
-            const value = sel?.value || sel?.['@value'] || '';
-            const match = String(value).match(/t=([0-9.]+)/);
-            if (match) return Number(match[1]);
-            return null;
-        };
-        const startRef = manifest.start || manifest.startCanvas;
-        let startId = typeof startRef === 'string' ? startRef : getId(startRef);
-        let startTime = null;
-        if (startRef && typeof startRef === 'object') {
-            const source = startRef.source || startRef.item;
-            const tType = String(startRef.type || startRef['@type'] || '').toLowerCase();
-            if (source && (tType.includes('specificresource') || !startId)) {
-                startId = getId(source) || source;
-            }
-            startTime = parseStartTime(startRef.selector || startRef.selectors);
-        }
-        const startCanvasIndex = (startId && canvasIndexById[startId] !== undefined) ? canvasIndexById[startId] : null;
-
-        const manifestSeeAlso = extractFulltextSourcesFromSeeAlso(manifest.seeAlso);
-        if (manifestSeeAlso.length && canvases.length === 1) {
-            const key = canvases[0].id;
-            if (key) {
-                if (!fulltextSourcesByCanvasId[key]) fulltextSourcesByCanvasId[key] = [];
-                manifestSeeAlso.forEach(src => {
-                    if (!fulltextSourcesByCanvasId[key].includes(src)) fulltextSourcesByCanvasId[key].push(src);
-                });
-            }
-        }
-
-        const parseTimeRangeFromId = (id) => {
-            if (!id || typeof id !== 'string' || !id.includes('#')) return null;
-            const fragment = id.split('#')[1] || '';
-            const match = fragment.match(/t=([0-9.]+)(?:,([0-9.]+))?/);
-            if (!match) return null;
-            const start = Number(match[1]);
-            const end = Number(match[2]);
-            if (!Number.isFinite(start)) return null;
-            return { start, end: Number.isFinite(end) ? end : Number.POSITIVE_INFINITY };
-        };
-        const parseRanges = (ranges) => {
-            return asArray(ranges).map(r => {
-                const range = {
-                    id: getId(r),
-                    label: getLabel(r.label),
-                    items: asArray(r.items || r.canvases || r.members).map(getId).filter(Boolean)
-                };
-                const children = asArray(r.items || r.ranges || r.members)
-                    .filter(item => typeof item === 'object' && (getType(item).toLowerCase().includes('range') || item.items || item.ranges));
-                range.children = parseRanges(children);
-                const childIds = range.children.flatMap(c => c.canvasIds || []);
-                range.canvasIds = Array.from(new Set([...range.items.map(normalizeCanvasId), ...childIds.map(normalizeCanvasId)]));
-                const itemTimes = range.items.map(parseTimeRangeFromId).filter(Boolean);
-                const childTimes = range.children.flatMap(c => c.timeRanges || []);
-                range.timeRanges = [...itemTimes, ...childTimes];
-                return range;
-            });
-        };
-        const ranges = parseRanges(manifest.structures || manifest.ranges);
-        const assignRangeIdx = (list) => {
-            list.forEach((r) => {
-                r._idx = rangesFlat.length;
-                rangesFlat.push(r);
-                if (r.children?.length) assignRangeIdx(r.children);
-            });
-        };
-        const rangesFlat = [];
-        assignRangeIdx(ranges);
-
-        const items = asArray(manifest.items || manifest.members).map(item => ({
-            id: getId(item),
-            label: getLabel(item.label),
-            type: getType(item)
-        })).filter(i => i.id);
-
-        const collectionLinks = [];
-        const pushCollection = (p) => {
-            if (!p) return;
-            const id = getId(p);
-            const lbl = getLabel(p?.label || p);
-            if (id || lbl) collectionLinks.push({ id, label: lbl || id });
-        };
-        asArray(manifest.partOf).forEach(pushCollection);
-        asArray(manifest.within).forEach(pushCollection);
-
-        const fulltext = '';
-
-        const dedupe = (arr) => {
-            const seen = new Set();
-            return arr.filter(item => {
-                const key = typeof item === 'string' ? item : JSON.stringify(item);
-                if (seen.has(key)) return false;
-                seen.add(key);
-                return true;
-            });
-        };
-
-        const parsed = {
-            type: isCollection ? 'collection' : this.detectType(manifest, { imageSources, avItems, modelItems }),
-            label,
-            summary,
-            metadata,
-            iiifTypeLabel: prettyType,
-            attribution,
-            attributionLabel,
-            logoUrl,
-            license,
-            provider,
-            canvases,
-            canvasIndexById,
-            imageSources: dedupe(imageSources),
-            avItems: dedupe(avItems),
-            modelItems: dedupe(modelItems),
-            cameraItems: dedupe(cameraItems),
-            ranges,
-            rangesFlat,
-            items,
-            collectionLinks: dedupe(collectionLinks),
-            fulltext,
-            annotationsByCanvasId,
-            annotationPageRefs,
-            fulltextPageRefs,
-            fulltextSourcesByCanvasId,
-            behavior,
-            sequenceOptions,
-            originalCanvases: canvases.slice(),
-            originalCanvasIndexById: { ...canvasIndexById },
-            manifestLanguages,
-            startCanvasIndex,
-            startCanvasId: startId || null,
-            startTime: Number.isFinite(startTime) ? startTime : null
-        };
-
+        const { parsed, activeManifestLanguage } = parseManifestHelper(manifest, {
+            ensureHttps: (url) => this.ensureHttps(url),
+            resolveThumb: (value, targetSize) => this.resolveThumb(value, targetSize),
+            collectManifestLanguages: (value) => this.collectManifestLanguages(value),
+            pickManifestLanguage: (langs) => this.pickManifestLanguage(langs),
+            resolveLangValue: (value, fallback = '', activeLanguage = this.activeManifestLanguage) => resolveLangValueHelper(value, {
+                fallback,
+                activeManifestLanguage: activeLanguage,
+                viewerLanguage: this.viewerLanguage,
+                browserLanguage: this.browserLanguage
+            }),
+            extractAltoSourcesFromItems: (items) => this.extractAltoSourcesFromItems(items),
+            extractPointSelector: (target) => this.extractPointSelector(target),
+            extractImageApiRegion: (body) => this.extractImageApiRegion(body),
+            detectType: (manifestValue, parsedValue) => this.detectType(manifestValue, parsedValue)
+        });
+        this.activeManifestLanguage = activeManifestLanguage;
         return parsed;
     }
 
@@ -7575,16 +6403,28 @@ export class MimirExplorer {
         this.els.info.classList.add('mimir-hidden');
         if (this.els.zoomPop) this.els.zoomPop.classList.add('mimir-hidden');
         if (this.els.zoomSlider) this.els.zoomSlider.value = 1;
+        if (this.els.pageInput) this.els.pageInput.value = '1';
+        if (this.els.pageTotal) this.els.pageTotal.innerText = '/ 1';
+        if (this.els.pageLabel) {
+            this.els.pageLabel.textContent = this.t('no_label');
+            this.els.pageLabel.title = this.t('no_label');
+        }
         if (this.els.filterBar) this.els.filterBar.classList.add('mimir-hidden');
         if (this.els.threeFilterBar) this.els.threeFilterBar.classList.add('mimir-hidden');
         if (this.els.bottomBar) this.els.bottomBar.classList.remove('mimir-collection-bar');
         if (this.els.btns.filterToggle) this.els.btns.filterToggle.classList.remove('mimir-filter-active');
+        if (this.els.btns.fulltextOverlayToggle) {
+            this.els.btns.fulltextOverlayToggle.classList.add('mimir-hidden');
+            this.els.btns.fulltextOverlayToggle.classList.remove('mimir-filter-active');
+            this.els.btns.fulltextOverlayToggle.style.color = '';
+        }
         this.filterOpen = false;
         this.threeFilterOpen = false;
         this.resetFilters();
         this.currentRegion = null;
         this.hasRegion = false;
         this.regionBlurEnabled = true;
+        this.updateFulltextOverlayUI();
         this.setLeftOpen(false);
         this.setRightOpen(false);
     }
